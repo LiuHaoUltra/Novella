@@ -1,0 +1,206 @@
+# =====================================================
+# Miscellaneous / Common
+# =====================================================
+*.class
+*.log
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+*~
+.DS_Store
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# =====================================================
+# IDE / Editor Configuration
+# =====================================================
+
+# IntelliJ / Android Studio
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code (uncomment if not sharing settings)
+# .vscode/
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.vim
+Session.vim
+
+# =====================================================
+# Flutter / Dart / Pub
+# =====================================================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+pubspec.lock
+build/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# Generated Dart files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+lib/generated_plugin_registrant.dart
+
+# Flutter Rust Bridge generated files
+# Keep frb_generated.dart but ignore intermediate files
+# lib/src/rust/frb_generated.dart
+
+# Coverage
+coverage/
+*.lcov
+
+# =====================================================
+# Symbolication / Obfuscation
+# =====================================================
+app.*.symbols
+app.*.map.json
+
+# =====================================================
+# Android
+# =====================================================
+**/android/**/gradle-wrapper.jar
+**/android/.gradle/
+**/android/.cxx/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# Signing keys (never commit!)
+**/android/key.properties
+**/android/**/*.keystore
+**/android/**/*.jks
+
+# NDK
+**/android/.externalNativeBuild/
+**/android/obj/
+
+# =====================================================
+# iOS / macOS
+# =====================================================
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework/
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/App.framework/
+**/ios/Flutter/engine/
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Pods/
+**/ios/Podfile.lock
+**/ios/.generated/
+**/ios/build/
+
+**/macos/.symlinks/
+**/macos/Flutter/Flutter-Debug.xcconfig
+**/macos/Flutter/Flutter-Release.xcconfig
+**/macos/Flutter/ephemeral/
+**/macos/Pods/
+**/macos/Podfile.lock
+
+# Xcode
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/project.xcworkspace/
+**/ios/**/xcuserdata/
+**/ios/**/.generated/
+**/ios/**/xcshareddata/xcschemes/*.xcscheme
+**/macos/**/*.mode1v3
+**/macos/**/*.mode2v3
+**/macos/**/*.moved-aside
+**/macos/**/*.pbxuser
+**/macos/**/*.perspectivev3
+**/macos/**/project.xcworkspace/
+**/macos/**/xcuserdata/
+**/macos/**/.generated/
+**/macos/**/xcshareddata/xcschemes/*.xcscheme
+
+# =====================================================
+# Windows
+# =====================================================
+**/windows/flutter/ephemeral/
+**/windows/**/Debug/
+**/windows/**/Release/
+**/windows/**/x64/
+**/windows/**/x86/
+
+# Visual Studio
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.[Cc]ache
+!*.[Cc]ache/
+*.ncb
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.vcxproj.user
+ipch/
+
+# =====================================================
+# Linux
+# =====================================================
+**/linux/flutter/ephemeral/
+**/linux/build/
+
+# =====================================================
+# Rust (flutter_rust_bridge)
+# =====================================================
+rust/target/
+**/*.rs.bk
+Cargo.lock
+
+# =====================================================
+# Web
+# =====================================================
+**/web/.dart_tool/
+
+# =====================================================
+# Testing / Code Quality
+# =====================================================
+*.test
+test-results/
+.test_coverage/
+
+# =====================================================
+# Temporary / Cache Files
+# =====================================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+.cache/
+.temp/

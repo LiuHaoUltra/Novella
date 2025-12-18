@@ -1,0 +1,442 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
+import 'package:novella/data/models/book.dart';
+import 'package:novella/data/services/book_service.dart';
+import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/ranking/ranking_page.dart';
+import 'package:novella/features/search/search_page.dart';
+import 'package:novella/features/settings/settings_page.dart';
+
+class HomePage extends ConsumerStatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  ConsumerState<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends ConsumerState<HomePage> {
+  final _logger = Logger('HomePage');
+  final _bookService = BookService();
+  List<Book> _rankBooks = [];
+  bool _loading = true;
+  DateTime? _lastRefreshTime;
+  String? _lastRankType;
+
+  @override
+  void initState() {
+    super.initState();
+    // Delay to allow settings to load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchRanking();
+    });
+  }
+
+  int _rankTypeToDay(String type) {
+    switch (type) {
+      case 'daily':
+        return 1;
+      case 'monthly':
+        return 31;
+      default:
+        return 7; // weekly
+    }
+  }
+
+  String _rankTypeToLabel(String type) {
+    switch (type) {
+      case 'daily':
+        return '日榜';
+      case 'monthly':
+        return '月榜';
+      default:
+        return '周榜';
+    }
+  }
+
+  Future<void> _fetchRanking() async {
+    final settings = ref.read(settingsProvider);
+    final rankType = settings.homeRankType;
+
+    // Cooldown check (Anti-spam)
+    if (_lastRefreshTime != null &&
+        _lastRankType == rankType &&
+        DateTime.now().difference(_lastRefreshTime!) <
+            const Duration(seconds: 10)) {
+      _logger.info('Refresh ignored due to cooldown.');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请稍候再刷新')));
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final days = _rankTypeToDay(rankType);
+      final books = await _bookService.getRank(days);
+      setState(() {
+        _rankBooks = books;
+        _loading = false;
+        _lastRefreshTime = DateTime.now();
+        _lastRankType = rankType;
+      });
+    } catch (e) {
+      _logger.severe('Error fetching ranking: $e');
+      setState(() {
+        _loading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('加载失败')));
+      }
+    }
+  }
+
+  /// Fetch ranking for a specific type (used when settings change)
+  Future<void> _fetchRankingForType(String rankType) async {
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final days = _rankTypeToDay(rankType);
+      final books = await _bookService.getRank(days);
+      setState(() {
+        _rankBooks = books;
+        _loading = false;
+        _lastRefreshTime = DateTime.now();
+      });
+    } catch (e) {
+      _logger.severe('Error fetching ranking: $e');
+      setState(() {
+        _loading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('加载失败')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final settings = ref.watch(settingsProvider);
+
+    // Refresh if rank type changed - update immediately to prevent infinite loop
+    if (_lastRankType != null && _lastRankType != settings.homeRankType) {
+      final newType = settings.homeRankType;
+      _lastRankType = newType; // Update immediately to prevent re-triggering
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchRankingForType(newType);
+      });
+    }
+
+    // Only show first 9 books (3 rows)
+    final previewBooks = _rankBooks.take(9).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('发现'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SearchPage()));
+            },
+            tooltip: '搜索',
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _fetchRanking,
+        child: CustomScrollView(
+          slivers: [
+            // Stats cards section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Expanded(child: _buildStatCard(context, '本月阅读', '0', '分钟')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildStatCard(context, '本周阅读', '0', '分钟')),
+                  ],
+                ),
+              ),
+            ),
+
+            // Section header - Ranking
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '近期排行',
+                          style: textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _rankTypeToLabel(settings.homeRankType),
+                            style: textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder:
+                                (_) => RankingPage(
+                                  initialType: settings.homeRankType,
+                                ),
+                          ),
+                        );
+                      },
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('更多'),
+                          Icon(Icons.chevron_right, size: 20),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Ranking preview grid (3 rows = 9 books)
+            _loading
+                ? const SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 200,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+                : previewBooks.isEmpty
+                ? SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 200,
+                    child: Center(
+                      child: Text(
+                        '暂无数据',
+                        style: textTheme.bodyLarge?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+                : SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          childAspectRatio: 0.58,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 12,
+                        ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final book = previewBooks[index];
+                      return _buildBookCard(context, book, index + 1);
+                    }, childCount: previewBooks.length),
+                  ),
+                ),
+
+            // Bottom padding
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+    BuildContext context,
+    String title,
+    String value,
+    String unit,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  unit,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookCard(BuildContext context, Book book, int rank) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder:
+                (_) => BookDetailPage(
+                  bookId: book.id,
+                  initialCoverUrl: book.cover,
+                  initialTitle: book.title,
+                ),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Card(
+                  elevation: 2,
+                  shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                  clipBehavior: Clip.antiAlias,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: CachedNetworkImage(
+                    imageUrl: book.cover,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    placeholder:
+                        (context, url) => Container(
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Center(
+                            child: Icon(
+                              Icons.book_outlined,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    errorWidget:
+                        (context, url, error) => Container(
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                  ),
+                ),
+                // Rank badge for top 3
+                if (rank <= 3)
+                  Positioned(
+                    left: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            rank == 1
+                                ? Colors.amber
+                                : rank == 2
+                                ? Colors.grey.shade400
+                                : Colors.brown.shade300,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '$rank',
+                        style: textTheme.labelSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 36, // Fixed height for 2 lines of text
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
+              child: Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface,
+                  height: 1.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
