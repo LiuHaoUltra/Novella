@@ -1,10 +1,30 @@
+import 'dart:ffi';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/rust/frb_generated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+
+// === 新增：加载策略控制函数 ===
+// 这里的逻辑至关重要：
+// - iOS/macOS: 库被静态链接到了主程序中，所以要在当前进程(process)里找，而不是找文件。
+// - Windows/Android: 库是作为外部文件存在的，所以要打开指定的文件名。
+ExternalLibrary _loadLibrary() {
+  if (Platform.isIOS || Platform.isMacOS) {
+    // iOS 静态链接关键点：直接在当前可执行文件中查找符号
+    return ExternalLibrary.process();
+  } else if (Platform.isWindows) {
+    return ExternalLibrary.open('novella_native.dll');
+  } else {
+    // Android
+    return ExternalLibrary.open('libnovella_native.so');
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +34,11 @@ void main() async {
   try {
     // Initialize Rust FFI for WOFF2 font conversion
     print('Flutter: Initializing RustLib...');
-    await RustLib.init();
+    
+    // === 关键修改：手动指定加载方式 ===
+    // 不再使用默认的 init()，而是传入我们要它找的那个“库”
+    await RustLib.init(externalLibrary: _loadLibrary());
+    
     print('Flutter: RustLib Initialized');
   } catch (e, stack) {
     print('Flutter: Failed to initialize RustLib: $e');
