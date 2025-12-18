@@ -2,5 +2,7 @@
 
 // === Rust Static Lib Linker Config ===
 // 1. -force_load: 强制加载我们的 Rust 库
-// 2. -lc++: 链接 C++ 标准库 (因为 woff2 是 C++ 写的)
+// 2. -lc++: 链接 C++ 标准库 (woff2 是 C++ 写的)
 OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/Libs/libnovella_native.a" -lc++
+// 3. 禁止剥离全局符号 (防止 Rust 接口被 Xcode 删掉)
+STRIP_STYLE = non-global
