@@ -26,15 +26,16 @@ jobs:
         with:
           targets: aarch64-apple-ios
 
+      # 2. 配置 Flutter 环境
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          # flutter-version: '3.27.1'
-          channel: 'master'
+          # 使用 master 渠道以兼容你本地的 Dart 3.11+ 版本
+          channel: 'master' 
           cache: true
 
-      # 3. [关键] 现场编译 Rust 并放入指定目录
-      # 满足在 .xcconfig 里配置的 -force_load 路径
+      # 3. 现场编译 Rust 并放入指定目录
+      # 这样可以保证你得到的 .a 文件永远是最新的，不用手动提交
       - name: Build and Place Rust Lib
         run: |
           echo "🛠️ Compiling Rust for iOS..."
@@ -54,9 +55,13 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # 5. 构建免签 Release 包
+      # 5. [关键修复] 构建免签 Release 包
+      # 添加了 --xcargs 参数，强行覆盖 Xcode 的签名设置，解决 "Requires Development Team" 报错
       - name: Build iOS Release (No Codesign)
-        run: flutter build ios --release --no-codesign
+        run: >
+          flutter build ios --release --no-codesign
+          --extensions
+          --xcargs="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' CODE_SIGN_ENTITLEMENTS='' CODE_SIGNING_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=''"
 
       # 6. 打包成 IPA
       - name: Package IPA
