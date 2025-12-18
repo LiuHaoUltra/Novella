@@ -39,24 +39,17 @@ target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
 
-# --- Rust Integration ---
-set(RUST_DIR "${CMAKE_SOURCE_DIR}/../rust")
-set(RUST_LIB_NAME "novella_native")
+# --- Rust Integration (Manual Pre-built) ---
+# 定义预编译 DLL 的位置 (位于 windows/libs/novella_native.dll)
+# 注意：CMAKE_SOURCE_DIR 指的是 windows/ 目录
+set(PREBUILT_DLL "${CMAKE_SOURCE_DIR}/libs/novella_native.dll")
 
-# Build Rust library (using release mode for performance)
-add_custom_command(TARGET ${BINARY_NAME} PRE_BUILD
-  COMMAND cargo build --release
-  WORKING_DIRECTORY ${RUST_DIR}
-  COMMENT "Building Rust library"
-  VERBATIM
-)
-
-# Copy the DLL to the executable directory
+# 构建后，直接把 DLL 复制到 .exe 旁边
 add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-  "${RUST_DIR}/target/release/${RUST_LIB_NAME}.dll"
-  "$<TARGET_FILE_DIR:${BINARY_NAME}>/${RUST_LIB_NAME}.dll"
-  COMMENT "Copying Rust DLL"
+  "${PREBUILT_DLL}"
+  "$<TARGET_FILE_DIR:${BINARY_NAME}>/novella_native.dll"
+  COMMENT "Copying pre-built Rust DLL from windows/libs"
   VERBATIM
 )
-# ------------------------
+# -------------------------------------------

@@ -1,0 +1,29 @@
+name: Build iOS Rust Lib
+on:
+  workflow_dispatch: # 允许手动点击触发
+  push:
+    paths:
+      - 'rust/**' # 只有改了 rust 代码才触发
+      - '.github/workflows/build_ios_rust.yml'
+
+jobs:
+  build-ios-lib:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Build Rust (Release)
+        working-directory: ./rust
+        run: |
+          cargo build --target aarch64-apple-ios --release
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libnovella_native_ios
+          path: rust/target/aarch64-apple-ios/release/libnovella_native.a
