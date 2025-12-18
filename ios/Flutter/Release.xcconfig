@@ -1,6 +1,5 @@
 #include "Generated.xcconfig"
 
 // === Rust Static Lib Linker Config ===
-// 强制链接我们手动放入的 Rust 静态库
-// $(PROJECT_DIR) 是 ios/Runner 目录，所以用 .. 回退到 ios/Libs
-OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/../Libs/libnovella_native.a"
+// 修正后的路径：直接指向 ios/Libs
+OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/Libs/libnovella_native.a"
