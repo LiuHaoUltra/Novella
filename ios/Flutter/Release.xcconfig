@@ -1,8 +1,12 @@
 #include "Generated.xcconfig"
 
 // === Rust Static Lib Linker Config ===
-// 1. -force_load: 强制加载我们的 Rust 库
-// 2. -lc++: 链接 C++ 标准库 (woff2 是 C++ 写的)
+// === 防剥离配置 ===
+// 1. 关闭部署后处理
+DEPLOYMENT_POSTPROCESSING = NO
+
+// 2. 禁止剥离已安装的产品
+STRIP_INSTALLED_PRODUCT = NO
+
+// 3. 链接器配置
 OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/Libs/libnovella_native.a" -lc++
-// 3. 禁止剥离全局符号 (防止 Rust 接口被 Xcode 删掉)
-STRIP_STYLE = non-global
