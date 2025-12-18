@@ -20,22 +20,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. 配置 Rust 环境 (编译静态库必须)
+      # 1. 配置 Rust 环境
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
 
-      # 2. 配置 Flutter 环境
+      # 2. 配置 Flutter 环境 (使用 master 渠道以兼容你本地 Dart 版本)
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          # 使用 master 渠道以兼容你本地的 Dart 3.11+ 版本
-          channel: 'master' 
+          channel: 'master'
           cache: true
 
       # 3. 现场编译 Rust 并放入指定目录
-      # 这样可以保证你得到的 .a 文件永远是最新的，不用手动提交
       - name: Build and Place Rust Lib
         run: |
           echo "🛠️ Compiling Rust for iOS..."
@@ -46,7 +44,7 @@ jobs:
           
           echo "📂 Moving lib to ios/Libs..."
           mkdir -p ios/Libs
-          # 复制生成的 .a 文件到 ios/Libs，供 Xcode 链接
+          # 复制生成的 .a 文件到 ios/Libs
           cp rust/target/aarch64-apple-ios/release/libnovella_native.a ios/Libs/
           
           echo "✅ Rust lib placed successfully!"
@@ -55,12 +53,12 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # 5. [关键修复] 构建免签 Release 包
-      # 添加了 --xcargs 参数，强行覆盖 Xcode 的签名设置，解决 "Requires Development Team" 报错
+      # 5. [修正] 构建免签 Release 包
+      # 去掉了错误的 --extensions 参数
+      # 保留了 --xcargs 以强行覆盖 Xcode 的签名检查
       - name: Build iOS Release (No Codesign)
         run: >
           flutter build ios --release --no-codesign
-          --extensions
           --xcargs="CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' CODE_SIGN_ENTITLEMENTS='' CODE_SIGNING_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=''"
 
       # 6. 打包成 IPA
