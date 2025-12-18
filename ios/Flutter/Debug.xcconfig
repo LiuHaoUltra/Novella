@@ -1,5 +1,6 @@
 #include "Generated.xcconfig"
 
 // === Rust Static Lib Linker Config ===
-// 修正后的路径：直接指向 ios/Libs
-OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/Libs/libnovella_native.a"
+// 1. -force_load: 强制加载我们的 Rust 库
+// 2. -lc++: 链接 C++ 标准库 (因为 woff2 是 C++ 写的)
+OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/Libs/libnovella_native.a" -lc++
