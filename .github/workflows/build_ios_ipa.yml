@@ -26,12 +26,11 @@ jobs:
         with:
           targets: aarch64-apple-ios
 
-      # 2. 配置 Flutter 环境
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.1' # 或使用 'stable'
-          channel: 'stable'
+          # flutter-version: '3.27.1'
+          channel: 'master'
           cache: true
 
       # 3. [关键] 现场编译 Rust 并放入指定目录
