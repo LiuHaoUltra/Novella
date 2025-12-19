@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/data/services/chapter_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
+import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
@@ -30,6 +32,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   final _chapterService = ChapterService();
   final _fontManager = FontManager();
   final _progressService = ReadingProgressService();
+  final _readingTimeService = ReadingTimeService();
   final ScrollController _scrollController = ScrollController();
 
   ChapterContent? _chapter;
@@ -39,17 +42,36 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   bool _initialScrollDone = false;
   bool _barsVisible = true;
 
+  // Debounce timer for scroll position saving
+  Timer? _savePositionTimer;
+  // Cache last position for synchronous save on dispose
+  double _lastScrollPercent = 0.0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     _loadChapter(widget.bid, widget.sortNum);
+    // Start reading time tracking
+    _readingTimeService.startSession();
   }
 
   @override
   void dispose() {
-    _saveCurrentPosition(); // Save position when leaving
+    _savePositionTimer?.cancel();
+    // End reading time tracking
+    _readingTimeService.endSession();
+    // Save cached position synchronously before dispose
+    if (_chapter != null && _lastScrollPercent > 0) {
+      print('[POSITION] DISPOSE: Saving cached position $_lastScrollPercent');
+      _progressService.saveLocalScrollPosition(
+        bookId: widget.bid,
+        chapterId: _chapter!.id,
+        sortNum: _chapter!.sortNum,
+        scrollPosition: _lastScrollPercent,
+      );
+    }
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -58,10 +80,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Save position when app goes to background
+    // Save position and reading time when app goes to background
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       _saveCurrentPosition();
+      _readingTimeService.endSession();
+    }
+    // Restart reading time tracking when returning to foreground
+    if (state == AppLifecycleState.resumed) {
+      _readingTimeService.startSession();
     }
   }
 
@@ -70,12 +97,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
+    // Cache current scroll position for dispose
+    if (maxScroll > 0) {
+      _lastScrollPercent = offset / maxScroll;
+    }
+
     // Auto show bars at top or bottom boundaries
     if ((offset <= 0 || offset >= maxScroll) && !_barsVisible) {
       setState(() {
         _barsVisible = true;
       });
     }
+
+    // Debounced position save (every 2 seconds of idle)
+    _savePositionTimer?.cancel();
+    _savePositionTimer = Timer(const Duration(seconds: 2), () {
+      _saveCurrentPosition();
+    });
   }
 
   void _toggleBars() {
@@ -84,7 +122,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     });
   }
 
-  /// Save current scroll position
+  /// Save current scroll position (local + server sync)
   Future<void> _saveCurrentPosition() async {
     if (_chapter == null || !_scrollController.hasClients) return;
 
@@ -92,6 +130,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final currentScroll = _scrollController.position.pixels;
     final scrollPercent = maxScroll > 0 ? currentScroll / maxScroll : 0.0;
 
+    // Save locally for fast restore
     await _progressService.saveLocalScrollPosition(
       bookId: widget.bid,
       chapterId: _chapter!.id,
@@ -99,8 +138,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       scrollPosition: scrollPercent,
     );
 
+    // Sync to server - use scroll percentage encoded in XPath format
+    // This allows backend to record which chapter user was reading
+    // Format: "scroll:{percentage}" so we can parse it back later
+    await _progressService.saveReadPosition(
+      bookId: widget.bid,
+      chapterId: _chapter!.id,
+      xPath: 'scroll:${scrollPercent.toStringAsFixed(4)}',
+    );
+
     _logger.info(
-      'Saved position: ${(scrollPercent * 100).toStringAsFixed(1)}%',
+      'Saved position: ch${_chapter!.sortNum} @ ${(scrollPercent * 100).toStringAsFixed(1)}%',
     );
   }
 
@@ -110,6 +158,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     _initialScrollDone = true;
 
     final position = await _progressService.getLocalScrollPosition(widget.bid);
+
+    _logger.info(
+      'Restoring position check: saved=${position?.sortNum}, current=${_chapter?.sortNum}, '
+      'scrollPos=${position?.scrollPosition.toStringAsFixed(3)}, hasClients=${_scrollController.hasClients}',
+    );
 
     if (position != null &&
         position.sortNum == _chapter?.sortNum &&
@@ -121,12 +174,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         final maxScroll = _scrollController.position.maxScrollExtent;
         final targetScroll = position.scrollPosition * maxScroll;
 
-        _scrollController.jumpTo(targetScroll);
-
         _logger.info(
-          'Restored position: ${(position.scrollPosition * 100).toStringAsFixed(1)}%',
+          'Jumping to: target=$targetScroll, max=$maxScroll, percent=${(position.scrollPosition * 100).toStringAsFixed(1)}%',
         );
+
+        _scrollController.jumpTo(targetScroll);
       }
+    } else if (position != null) {
+      _logger.info(
+        'Position NOT restored: sortNum mismatch or no scroll clients. '
+        'Saved chapter=${position.sortNum}, Current chapter=${_chapter?.sortNum}',
+      );
     }
   }
 
@@ -179,6 +237,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         // Restore scroll position after build
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _restoreScrollPosition();
+
+          // Match Web behavior: save position shortly after chapter loads
+          // Web uses IntersectionObserver with 300ms debounce
+          // We use 500ms to ensure scroll restore completes first
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && _chapter != null) {
+              _saveCurrentPosition();
+            }
+          });
         });
       }
     } catch (e) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:novella/features/home/home_page.dart';
+import 'package:novella/features/history/history_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/shelf/shelf_page.dart';
 
@@ -16,6 +17,7 @@ class _MainPageState extends State<MainPage> {
   final List<Widget> _pages = [
     const HomePage(),
     const ShelfPage(),
+    const HistoryPage(),
     const SettingsPage(),
   ];
 
@@ -59,6 +61,11 @@ class _MainPageState extends State<MainPage> {
               icon: Icon(Icons.bookmark_border),
               selectedIcon: Icon(Icons.bookmark),
               label: '书架',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.history_outlined),
+              selectedIcon: Icon(Icons.history),
+              label: '历史',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

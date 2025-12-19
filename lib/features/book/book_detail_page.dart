@@ -25,6 +25,8 @@ class BookInfo {
   final bool canEdit;
   final List<ChapterInfo> chapters;
   final UserInfo? user;
+  // Server-provided reading position (from GetBookInfo response)
+  final ServerReadPosition? serverReadPosition;
 
   BookInfo({
     required this.id,
@@ -39,6 +41,7 @@ class BookInfo {
     required this.canEdit,
     required this.chapters,
     this.user,
+    this.serverReadPosition,
   });
 
   factory BookInfo.fromJson(Map<dynamic, dynamic> json) {
@@ -48,6 +51,13 @@ class BookInfo {
             ?.map((e) => ChapterInfo.fromJson(e as Map<dynamic, dynamic>))
             .toList() ??
         [];
+
+    // Parse ReadPosition from server response
+    ServerReadPosition? readPos;
+    final posData = json['ReadPosition'];
+    if (posData != null && posData is Map) {
+      readPos = ServerReadPosition.fromJson(posData);
+    }
 
     return BookInfo(
       id: book['Id'] as int? ?? 0,
@@ -64,6 +74,22 @@ class BookInfo {
       canEdit: book['CanEdit'] as bool? ?? false,
       chapters: chapterList,
       user: book['User'] != null ? UserInfo.fromJson(book['User']) : null,
+      serverReadPosition: readPos,
+    );
+  }
+}
+
+/// Server-provided reading position
+class ServerReadPosition {
+  final int? chapterId;
+  final String? position; // XPath or scroll position string
+
+  ServerReadPosition({this.chapterId, this.position});
+
+  factory ServerReadPosition.fromJson(Map<dynamic, dynamic> json) {
+    return ServerReadPosition(
+      chapterId: json['ChapterId'] as int?,
+      position: json['Position'] as String?,
     );
   }
 }
@@ -258,9 +284,52 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     try {
       final info = await _bookService.getBookInfo(widget.bookId);
-      final position = await _progressService.getLocalScrollPosition(
-        widget.bookId,
-      );
+
+      // Try to get position from both sources
+      ReadPosition? position;
+
+      // 1. Try server position from BookInfo response (embedded in GetBookInfo)
+      if (info.serverReadPosition != null &&
+          info.serverReadPosition!.chapterId != null) {
+        final serverChapterId = info.serverReadPosition!.chapterId!;
+        final positionStr = info.serverReadPosition!.position ?? '';
+
+        // Find sortNum from chapter list (chapters are sorted by sortNum)
+        int? sortNum;
+        double scrollPosition = 0.0;
+
+        for (int i = 0; i < info.chapters.length; i++) {
+          if (info.chapters[i].id == serverChapterId) {
+            sortNum = i + 1; // sortNum is 1-indexed
+            break;
+          }
+        }
+
+        // Parse scroll percentage from our custom format
+        if (positionStr.startsWith('scroll:')) {
+          scrollPosition = double.tryParse(positionStr.substring(7)) ?? 0.0;
+        }
+
+        if (sortNum != null) {
+          position = ReadPosition(
+            bookId: widget.bookId,
+            chapterId: serverChapterId,
+            sortNum: sortNum,
+            scrollPosition: scrollPosition,
+          );
+          _logger.info(
+            'Using server position: chapter $sortNum @ ${(scrollPosition * 100).toStringAsFixed(1)}%',
+          );
+        }
+      }
+
+      // 2. Fallback to local position
+      if (position == null) {
+        position = await _progressService.getLocalScrollPosition(widget.bookId);
+        if (position != null) {
+          _logger.info('Using local position: chapter ${position.sortNum}');
+        }
+      }
 
       // Ensure shelf is loaded for correct status
       await _userService.ensureInitialized();
@@ -291,16 +360,23 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   }
 
   void _startReading({int sortNum = 1}) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder:
-            (_) => ReaderPage(
-              bid: widget.bookId,
-              sortNum: sortNum,
-              totalChapters: _bookInfo!.chapters.length,
-            ),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder:
+                (_) => ReaderPage(
+                  bid: widget.bookId,
+                  sortNum: sortNum,
+                  totalChapters: _bookInfo!.chapters.length,
+                ),
+          ),
+        )
+        .then((_) {
+          // Refresh reading position when returning from reader
+          if (mounted) {
+            _loadBookInfo();
+          }
+        });
   }
 
   void _continueReading() {
@@ -830,29 +906,83 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                     const SizedBox(width: 12),
                     // Read button
                     Expanded(
-                      child: FilledButton(
-                        onPressed: _continueReading,
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.play_arrow_rounded, size: 22),
-                            const SizedBox(width: 8),
-                            Text(
-                              _readPosition != null
-                                  ? '续读 · 第${_readPosition!.sortNum}章'
-                                  : '开始阅读',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                              ),
+                      child: SizedBox(
+                        height: 56,
+                        child: FilledButton(
+                          onPressed: _continueReading,
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                          ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.play_arrow_rounded, size: 22),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  _readPosition != null
+                                      ? (() {
+                                        // Find chapter title by chapterId
+                                        final chapter = book.chapters
+                                            .cast<ChapterInfo?>()
+                                            .firstWhere(
+                                              (c) =>
+                                                  c?.id ==
+                                                  _readPosition!.chapterId,
+                                              orElse: () => null,
+                                            );
+                                        if (chapter != null &&
+                                            chapter.title.isNotEmpty) {
+                                          String title = chapter.title;
+
+                                          // Apply cleaning if enabled in settings
+                                          final settings = ref.read(
+                                            settingsProvider,
+                                          );
+                                          if (settings.cleanChapterTitle) {
+                                            // Smart hybrid regex:
+                                            // Handles 【第一话】... or non-English leading identifier
+                                            // Also handles 『「〈 as delimiters
+                                            // Leaves pure English titles unchanged
+                                            final regex = RegExp(
+                                              r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
+                                            );
+                                            final match = regex.firstMatch(
+                                              title,
+                                            );
+                                            if (match != null) {
+                                              // Combine group 1 and group 2 (one will be non-null)
+                                              final extracted =
+                                                  (match.group(1) ?? '') +
+                                                  (match.group(2) ?? '');
+                                              if (extracted.isNotEmpty) {
+                                                title = extracted;
+                                              }
+                                            }
+                                          }
+
+                                          // Truncate long titles
+                                          if (title.length > 15) {
+                                            title =
+                                                '${title.substring(0, 15)}...';
+                                          }
+                                          return '续读 · $title';
+                                        }
+                                        return '续读';
+                                      })()
+                                      : '开始阅读',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

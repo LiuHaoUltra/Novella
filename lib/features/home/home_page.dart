@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
+import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
@@ -16,21 +17,52 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _logger = Logger('HomePage');
   final _bookService = BookService();
+  final _readingTimeService = ReadingTimeService();
   List<Book> _rankBooks = [];
   bool _loading = true;
   DateTime? _lastRefreshTime;
   String? _lastRankType;
 
+  // Reading stats
+  int _weeklyMinutes = 0;
+  int _monthlyMinutes = 0;
+
   @override
   void initState() {
     super.initState();
     // Delay to allow settings to load
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _readingTimeService
+          .recoverSession(); // Recover/Clear stale sessions
       _fetchRanking();
+      _loadReadingStats();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh reading stats when returning to this page (e.g. from bottom nav switch)
+    _loadReadingStats();
+  }
+
+  /// Load reading time statistics
+  Future<void> _loadReadingStats() async {
+    try {
+      final weekly = await _readingTimeService.getWeeklyMinutes();
+      final monthly = await _readingTimeService.getMonthlyMinutes();
+      if (mounted) {
+        setState(() {
+          _weeklyMinutes = weekly;
+          _monthlyMinutes = monthly;
+        });
+      }
+    } catch (e) {
+      _logger.warning('Failed to load reading stats: $e');
+    }
   }
 
   int _rankTypeToDay(String type) {
@@ -185,9 +217,23 @@ class _HomePageState extends ConsumerState<HomePage> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Expanded(child: _buildStatCard(context, '本月阅读', '0', '分钟')),
+                    Expanded(
+                      child: _buildStatCard(
+                        context,
+                        '本月阅读',
+                        '$_monthlyMinutes',
+                        '分钟',
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    Expanded(child: _buildStatCard(context, '本周阅读', '0', '分钟')),
+                    Expanded(
+                      child: _buildStatCard(
+                        context,
+                        '本周阅读',
+                        '$_weeklyMinutes',
+                        '分钟',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -355,16 +401,18 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     return GestureDetector(
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder:
-                (_) => BookDetailPage(
-                  bookId: book.id,
-                  initialCoverUrl: book.cover,
-                  initialTitle: book.title,
-                ),
-          ),
-        );
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder:
+                    (_) => BookDetailPage(
+                      bookId: book.id,
+                      initialCoverUrl: book.cover,
+                      initialTitle: book.title,
+                    ),
+              ),
+            )
+            .then((_) => _loadReadingStats());
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

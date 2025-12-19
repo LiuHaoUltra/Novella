@@ -296,6 +296,68 @@ class UserService extends ChangeNotifier {
     return _shelfCache.any((e) => e['id'] == bookId && e['type'] == 'BOOK');
   }
 
+  // ============= History API Methods =============
+
+  /// Get user's reading history (list of book IDs)
+  /// Reference: getReadHistory in services/user/index.ts
+  /// Returns { Novel: number[], Comic: number[] }
+  Future<List<int>> getReadHistory() async {
+    try {
+      // Web client always passes [params, options] - for no-param calls, params can be empty {}
+      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+        'GetReadHistory',
+        args: <Object>[
+          {}, // params (empty for this call)
+          {'UseGzip': true}, // options
+        ],
+      );
+
+      _logger.info('GetReadHistory raw result: $result');
+
+      if (result.isEmpty) {
+        _logger.info('Empty read history from server');
+        return [];
+      }
+
+      // Extract Novel list (we only care about novels for now)
+      final novelList = result['Novel'];
+      if (novelList == null || novelList is! List) {
+        _logger.warning(
+          'Unexpected history data type: ${novelList?.runtimeType}',
+        );
+        return [];
+      }
+
+      final bookIds = novelList.cast<int>().toList();
+      _logger.info('Got ${bookIds.length} books in read history');
+      return bookIds;
+    } catch (e) {
+      _logger.severe('Failed to get read history: $e');
+      return [];
+    }
+  }
+
+  /// Clear user's reading history
+  /// Reference: clearHistory in services/user/index.ts
+  Future<bool> clearReadHistory() async {
+    try {
+      // Include options like other API calls
+      await _signalRService.invoke(
+        'ClearReadHistory',
+        args: [
+          {}, // Empty params
+          {'UseGzip': true}, // Options
+        ],
+      );
+      _logger.info('Read history cleared');
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _logger.severe('Failed to clear read history: $e');
+      return false;
+    }
+  }
+
   /// Save shelf to server (like reference's syncToRemote)
   Future<void> _saveShelfToServer() async {
     if (!_initialized) return;

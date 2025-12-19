@@ -52,13 +52,18 @@ class ReadingProgressService {
     required String xPath, // XPath position for precise scroll restoration
   }) async {
     try {
+      // Web client calls: invoke('SaveReadPosition', params, {UseGzip: true})
+      // MUST include options as second arg!
       await _signalRService.invoke(
         'SaveReadPosition',
         args: [
           {'Bid': bookId, 'Cid': chapterId, 'XPath': xPath},
+          {'UseGzip': true}, // Options - REQUIRED!
         ],
       );
-      _logger.info('Saved reading position: book=$bookId, chapter=$chapterId');
+      _logger.info(
+        'Saved reading position: book=$bookId, chapter=$chapterId, xPath=$xPath',
+      );
     } catch (e) {
       _logger.warning('Failed to save position to server: $e');
       // Still save locally even if server fails
@@ -68,26 +73,12 @@ class ReadingProgressService {
     await _saveLocalPosition(bookId, chapterId, xPath);
   }
 
-  /// Get reading position from server
-  /// Reference: getReadPosition in services/book/index.ts
+  /// Get reading position - LOCAL ONLY
+  /// Note: GetReadPosition RPC does not exist on the server.
+  /// Server position is embedded in GetBookInfo response as ReadPosition.
+  /// This method only returns locally cached position.
   Future<Map<String, dynamic>?> getReadPosition(int bookId) async {
-    try {
-      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
-        'GetReadPosition',
-        args: [
-          {'Id': bookId},
-        ],
-      );
-
-      if (result.isNotEmpty) {
-        _logger.info('Got reading position from server for book=$bookId');
-        return {'chapterId': result['ChapterId'], 'xPath': result['Position']};
-      }
-    } catch (e) {
-      _logger.warning('Failed to get position from server: $e');
-    }
-
-    // Fallback to local cache
+    // Just return local cache - server position comes from GetBookInfo
     return await _getLocalPosition(bookId);
   }
 
@@ -108,13 +99,14 @@ class ReadingProgressService {
       scrollPosition: scrollPosition,
     );
 
+    final data =
+        '${position.chapterId}|${position.sortNum}|${position.scrollPosition}';
     // Store as simple string for SharedPreferences
-    await prefs.setString(
-      key,
-      '${position.chapterId}|${position.sortNum}|${position.scrollPosition}',
-    );
-    _logger.fine(
-      'Saved local position: $key = ${position.sortNum}@${position.scrollPosition}',
+    await prefs.setString(key, data);
+
+    print('[POSITION] SAVED: key=$key, data=$data');
+    print(
+      '[POSITION] SAVED: chapterId=$chapterId, sortNum=$sortNum, scroll=${(scrollPosition * 100).toStringAsFixed(1)}%',
     );
   }
 
@@ -124,19 +116,29 @@ class ReadingProgressService {
     final key = 'read_pos_$bookId';
     final data = prefs.getString(key);
 
-    if (data == null) return null;
+    print('[POSITION] LOAD: key=$key, data=$data');
+
+    if (data == null) {
+      print('[POSITION] LOAD: no saved position found');
+      return null;
+    }
 
     try {
       final parts = data.split('|');
       if (parts.length >= 3) {
-        return ReadPosition(
+        final pos = ReadPosition(
           bookId: bookId,
           chapterId: int.parse(parts[0]),
           sortNum: int.parse(parts[1]),
           scrollPosition: double.parse(parts[2]),
         );
+        print(
+          '[POSITION] LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, scroll=${(pos.scrollPosition * 100).toStringAsFixed(1)}%',
+        );
+        return pos;
       }
     } catch (e) {
+      print('[POSITION] LOAD ERROR: $e');
       _logger.warning('Failed to parse local position: $e');
     }
     return null;

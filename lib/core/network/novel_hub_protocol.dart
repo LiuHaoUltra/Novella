@@ -216,8 +216,14 @@ class NovelHubProtocol implements IHubProtocol {
       payload.add(message.invocationId);
       payload.add(message.target);
       // Convert arguments for serialization
-      payload.add(_toSerializableList(message.arguments));
+      final args = _toSerializableList(message.arguments);
+      payload.add(args);
       payload.add(message.streamIds);
+
+      // Debug: show what we're sending
+      if (message.target == 'SaveReadPosition') {
+        print('[PROTOCOL] SaveReadPosition args: $args');
+      }
     } else if (message is CompletionMessage) {
       // [3, Headers, InvocationId, ResultKind, Result]
       payload.add(3); // Completion

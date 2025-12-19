@@ -16,6 +16,7 @@ class AppSettings {
   final int fontCacheLimit; // 10-60
   final String homeRankType; // 'daily', 'weekly', 'monthly'
   final bool oledBlack;
+  final bool cleanChapterTitle; // Clean chapter title for continue button
 
   const AppSettings({
     this.fontSize = 18.0,
@@ -26,6 +27,7 @@ class AppSettings {
     this.fontCacheLimit = 30,
     this.homeRankType = 'weekly',
     this.oledBlack = false,
+    this.cleanChapterTitle = false,
   });
 
   AppSettings copyWith({
@@ -37,6 +39,7 @@ class AppSettings {
     int? fontCacheLimit,
     String? homeRankType,
     bool? oledBlack,
+    bool? cleanChapterTitle,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -47,6 +50,7 @@ class AppSettings {
       fontCacheLimit: fontCacheLimit ?? this.fontCacheLimit,
       homeRankType: homeRankType ?? this.homeRankType,
       oledBlack: oledBlack ?? this.oledBlack,
+      cleanChapterTitle: cleanChapterTitle ?? this.cleanChapterTitle,
     );
   }
 }
@@ -70,6 +74,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       fontCacheLimit: prefs.getInt('setting_fontCacheLimit') ?? 30,
       homeRankType: prefs.getString('setting_homeRankType') ?? 'weekly',
       oledBlack: prefs.getBool('setting_oledBlack') ?? false,
+      cleanChapterTitle: prefs.getBool('setting_cleanChapterTitle') ?? false,
     );
   }
 
@@ -83,6 +88,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setInt('setting_fontCacheLimit', state.fontCacheLimit);
     await prefs.setString('setting_homeRankType', state.homeRankType);
     await prefs.setBool('setting_oledBlack', state.oledBlack);
+    await prefs.setBool('setting_cleanChapterTitle', state.cleanChapterTitle);
   }
 
   void setFontSize(double size) {
@@ -124,6 +130,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(oledBlack: value);
     _save();
   }
+
+  void setCleanChapterTitle(bool value) {
+    state = state.copyWith(cleanChapterTitle: value);
+    _save();
+  }
 }
 
 /// Provider for settings (Riverpod 3.x syntax)
@@ -148,22 +159,17 @@ class SettingsPage extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-              child: Row(
-                children: [
-                  Text(
-                    '设置',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
+              child: Text(
+                '设置',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
 
             // Reading Settings Section
-            _buildSectionHeader(context, '阅读设置'),
+            _buildSectionHeader(context, '阅读'),
 
             // Font Size
             ListTile(
@@ -223,6 +229,15 @@ class SettingsPage extends ConsumerWidget {
               title: const Text('显示章节序号'),
               value: settings.showChapterNumber,
               onChanged: (value) => notifier.setShowChapterNumber(value),
+            ),
+
+            // Clean Chapter Title for continue button
+            SwitchListTile(
+              secondary: const Icon(Icons.auto_fix_high),
+              title: const Text('简化章节标题'),
+              subtitle: const Text('实验性功能，仅对续读按钮生效'),
+              value: settings.cleanChapterTitle,
+              onChanged: (value) => notifier.setCleanChapterTitle(value),
             ),
 
             const Divider(),
@@ -313,7 +328,7 @@ class SettingsPage extends ConsumerWidget {
             SwitchListTile(
               secondary: const Icon(Icons.contrast),
               title: const Text('纯黑模式'),
-              subtitle: const Text('更深邃的黑色背景'),
+              subtitle: const Text('禁用封面取色，更深邃的黑色背景'),
               value: settings.oledBlack,
               onChanged:
                   colorScheme.brightness == Brightness.dark
@@ -324,12 +339,12 @@ class SettingsPage extends ConsumerWidget {
             const Divider(),
 
             // Cache Management Section
-            _buildSectionHeader(context, '缓存管理'),
+            _buildSectionHeader(context, '缓存'),
 
             // Font Cache Enable Switch
             SwitchListTile(
               secondary: const Icon(Icons.cached),
-              title: const Text('启用字体缓存'),
+              title: const Text('字体缓存'),
               subtitle: Text(settings.fontCacheEnabled ? '启用' : '禁用'),
               value: settings.fontCacheEnabled,
               onChanged: (value) => notifier.setFontCacheEnabled(value),
