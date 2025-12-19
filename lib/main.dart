@@ -1,5 +1,4 @@
-import 'dart:ffi';
-import 'dart:io';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +16,8 @@ import 'package:window_manager/window_manager.dart';
 ExternalLibrary _loadLibrary() {
   if (Platform.isIOS || Platform.isMacOS) {
     // iOS 静态链接关键点：直接在当前可执行文件中查找符号
-    return ExternalLibrary.process();
+    // iKnowHowToUseIt: 确认理解静态链接的使用方式
+    return ExternalLibrary.process(iKnowHowToUseIt: true);
   } else if (Platform.isWindows) {
     return ExternalLibrary.open('novella_native.dll');
   } else {
@@ -34,11 +34,11 @@ void main() async {
   try {
     // Initialize Rust FFI for WOFF2 font conversion
     print('Flutter: Initializing RustLib...');
-    
+
     // === 关键修改：手动指定加载方式 ===
     // 不再使用默认的 init()，而是传入我们要它找的那个“库”
     await RustLib.init(externalLibrary: _loadLibrary());
-    
+
     print('Flutter: RustLib Initialized');
   } catch (e, stack) {
     print('Flutter: Failed to initialize RustLib: $e');

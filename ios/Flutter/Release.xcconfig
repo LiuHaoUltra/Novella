@@ -9,4 +9,4 @@ DEPLOYMENT_POSTPROCESSING = NO
 STRIP_INSTALLED_PRODUCT = NO
 
 // 3. 链接器配置
-OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/Libs/libnovella_native.a" -lc++
+OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/libs/libnovella_native.a" -lc++
