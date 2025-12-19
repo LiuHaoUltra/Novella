@@ -41,9 +41,9 @@ jobs:
           cargo build --release --target aarch64-apple-ios
           cd ..
           
-          echo "📂 Moving lib to ios/Libs..."
-          mkdir -p ios/Libs
-          cp rust/target/aarch64-apple-ios/release/libnovella_native.a ios/Libs/
+          echo "📂 Moving lib to ios/libs..."
+          mkdir -p ios/libs
+          cp rust/target/aarch64-apple-ios/release/libnovella_native.a ios/libs/
           
           echo "✅ Rust lib placed successfully!"
 
