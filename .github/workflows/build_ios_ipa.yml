@@ -30,7 +30,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          # flutter-version: '3.27.1'
           channel: 'master'
           cache: true
 
@@ -52,40 +51,39 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # [核心修复步骤] 5. 暴力移除签名限制
-      # 使用 sed 命令直接修改文件，无需手动操作
+      # 5. [调试步骤] 验证关键文件是否存在
+      # 很多时候是因为 Xcode 找不到这个文件，导致链接失败，然后 Flutter 误报为签名错误
+      - name: Debug - Check File Existence
+        run: |
+          echo "🔍 Checking ios directory structure..."
+          ls -R ios/Libs
+          echo "PWD is: $(pwd)"
+
+      # 6. 暴力移除签名配置 (保留这个步骤，因为它仍然是必须的)
       - name: Nuke Code Signing
         run: |
           echo "☢️ Nuking code signing configurations..."
-          
-          # 1. 针对 project.pbxproj 的暴力修改
-          # 将所有 "CODE_SIGN_STYLE = Automatic;" 替换为 "CODE_SIGN_STYLE = Manual;"
-          # 这一步至关重要，不改 Manual，Xcode 仍会检查 Team
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
-          
-          # 将所有 "iPhone Developer" 签名身份替换为空
           sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";/g' ios/Runner.xcodeproj/project.pbxproj
-          
-          # 2. 针对 Release.xcconfig 的覆盖修改
           echo "CODE_SIGNING_ALLOWED = NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED = NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY =" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_STYLE = Manual" >> ios/Flutter/Release.xcconfig
-          
-          echo "✅ Code signing configurations nuked."
 
-      # 6. 构建免签 Release 包
+      # 7. [关键修改] 构建免签 Release 包 (开启 --verbose)
+      # 加上 --verbose 后，请仔细检查 CI 日志中红色的 ERROR 部分，
+      # 真正的错误通常隐藏在 "Requires a selected Development Team" 上方几十行的地方。
       - name: Build iOS Release (No Codesign)
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --verbose
 
-      # 7. 打包成 IPA
+      # 8. 打包成 IPA
       - name: Package IPA
         run: |
           mkdir Payload
           mv build/ios/iphoneos/Runner.app Payload
           zip -r novella.ipa Payload
 
-      # 8. 上传产物
+      # 9. 上传产物
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
