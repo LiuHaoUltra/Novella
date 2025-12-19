@@ -1,6 +1,13 @@
 #include "Generated.xcconfig"
 
 // === Rust Static Lib Linker Config ===
-// 1. -force_load: 强制加载我们的 Rust 库
-// 2. -lc++: 链接 C++ 标准库 (因为 woff2 是 C++ 写的)
-OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/libs/libnovella_native.a" -lc++
+// The goal: Force iOS linker to include ALL symbols from our Rust static library
+
+// 1. Disable all stripping
+DEPLOYMENT_POSTPROCESSING = NO
+STRIP_INSTALLED_PRODUCT = NO
+DEAD_CODE_STRIPPING = NO
+COPY_PHASE_STRIP = NO
+
+// 2. Linker flags
+OTHER_LDFLAGS = $(inherited) -force_load "$(PROJECT_DIR)/libs/libnovella_native.a" -ObjC -lc++
