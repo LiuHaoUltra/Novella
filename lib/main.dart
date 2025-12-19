@@ -26,10 +26,17 @@ ExternalLibrary _loadLibrary() {
   }
 }
 
+// === Global state for RustLib initialization ===
+bool rustLibInitialized = false;
+String? rustLibInitError;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   print('Flutter: WidgetsInitialized');
+  print(
+    'Flutter: Platform.isIOS=${Platform.isIOS}, Platform.isMacOS=${Platform.isMacOS}',
+  );
 
   try {
     // Initialize Rust FFI for WOFF2 font conversion
@@ -39,10 +46,13 @@ void main() async {
     // 不再使用默认的 init()，而是传入我们要它找的那个“库”
     await RustLib.init(externalLibrary: _loadLibrary());
 
-    print('Flutter: RustLib Initialized');
+    rustLibInitialized = true;
+    print('Flutter: RustLib Initialized Successfully!');
   } catch (e, stack) {
-    print('Flutter: Failed to initialize RustLib: $e');
-    print(stack);
+    rustLibInitialized = false;
+    rustLibInitError = e.toString();
+    print('Flutter: *** FAILED to initialize RustLib: $e');
+    print('Flutter: Stack trace: $stack');
   }
 
   try {

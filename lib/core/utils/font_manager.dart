@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:convert/convert.dart';
 import 'package:novella/src/rust/api/font_converter.dart' as rust_ffi;
+import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
 
 /// Font cache information model
 class FontCacheInfo {
@@ -118,10 +119,15 @@ class FontManager {
 
         // Convert WOFF2 to TTF using Rust FFI
         print('[FONT] Converting WOFF2 to TTF via Rust FFI...');
+        print('[FONT] RustLib initialized: $rustLibInitialized');
 
-        // Note: RustLib is already initialized in main.dart with the correct
-        // externalLibrary parameter for static linking on iOS. Do NOT call
-        // RustLib.init() here as it would try to load a dynamic framework.
+        // Check if RustLib was successfully initialized in main.dart
+        if (!rustLibInitialized) {
+          print(
+            '[FONT] *** ERROR: RustLib not initialized! Error: $rustLibInitError',
+          );
+          return null;
+        }
 
         ttfBytes = await rust_ffi.convertWoff2ToTtf(woff2Data: woff2Bytes);
         print('[FONT] TTF size: ${ttfBytes.length} bytes');
