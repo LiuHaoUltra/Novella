@@ -138,16 +138,27 @@ class _MyAppState extends ConsumerState<MyApp> {
       title: 'Novella',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
+          seedColor: Colors.blueGrey,
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+        // Tech-simplicity: refined typography
+        textTheme: const TextTheme(
+          displayLarge: TextStyle(letterSpacing: -1.0),
+          displayMedium: TextStyle(letterSpacing: -0.5),
+        ),
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
+          seedColor: Colors.blueGrey,
           brightness: Brightness.dark,
+        ).copyWith(
+          surface: settings.oledBlack ? Colors.black : null,
+          surfaceContainer: settings.oledBlack ? Colors.black : null,
+          surfaceContainerHigh:
+              settings.oledBlack ? const Color(0xFF121212) : null,
         ),
+        scaffoldBackgroundColor: settings.oledBlack ? Colors.black : null,
         useMaterial3: true,
       ),
       themeMode: _getThemeMode(settings.theme),

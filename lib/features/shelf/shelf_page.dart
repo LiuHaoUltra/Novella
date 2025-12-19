@@ -270,50 +270,43 @@ class _ShelfPageState extends State<ShelfPage> {
     TextTheme textTheme,
   ) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+      padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
       child: Row(
         children: [
           // Back button or title
           if (_breadcrumbs.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: _navigateBack,
-            )
-          else
-            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _navigateBack,
+                style: IconButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(40, 40),
+                ),
+              ),
+            ),
 
           // Title
           Expanded(
             child: Text(
               _breadcrumbs.isEmpty ? '书架' : _breadcrumbs.last.title,
-              style: textTheme.headlineSmall?.copyWith(
+              style: textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
 
           // Action buttons
           if (_breadcrumbs.isEmpty) ...[
-            TextButton.icon(
+            IconButton(
               onPressed: _createFolder,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('导入'),
-              style: TextButton.styleFrom(
-                foregroundColor: colorScheme.onSurface,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () {
-                // TODO: Implement select mode
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('选择功能开发中...')));
-              },
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('选择'),
-              style: TextButton.styleFrom(
-                foregroundColor: colorScheme.onSurface,
-              ),
+              icon: const Icon(
+                Icons.create_new_folder_outlined,
+              ), // More minimal icon
+              tooltip: '新建文件夹',
             ),
           ],
 
@@ -321,6 +314,7 @@ class _ShelfPageState extends State<ShelfPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _fetchShelf(force: true),
+            tooltip: '刷新',
           ),
         ],
       ),

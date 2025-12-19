@@ -2,11 +2,13 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
+import 'package:novella/features/settings/settings_page.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 /// Detailed book information response
@@ -96,7 +98,7 @@ class UserInfo {
   }
 }
 
-class BookDetailPage extends StatefulWidget {
+class BookDetailPage extends ConsumerStatefulWidget {
   final int bookId;
   final String? initialCoverUrl;
   final String? initialTitle;
@@ -109,10 +111,10 @@ class BookDetailPage extends StatefulWidget {
   });
 
   @override
-  State<BookDetailPage> createState() => _BookDetailPageState();
+  ConsumerState<BookDetailPage> createState() => _BookDetailPageState();
 }
 
-class _BookDetailPageState extends State<BookDetailPage> {
+class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   final _logger = Logger('BookDetailPage');
   final _bookService = BookService();
   final _progressService = ReadingProgressService();
@@ -363,6 +365,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 
   Widget _buildLoadingPreview(ColorScheme colorScheme) {
+    final settings = ref.watch(settingsProvider);
+    final isOled = settings.oledBlack;
     final coverUrl = widget.initialCoverUrl ?? '';
     final title = widget.initialTitle ?? '';
 
@@ -380,7 +384,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
               fit: StackFit.expand,
               children: [
                 // Gradient background from extracted colors or loading placeholder
-                if (_gradientColors != null)
+                if (!isOled && _gradientColors != null)
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -394,7 +398,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   Container(
                     color:
                         colorScheme.brightness == Brightness.dark
-                            ? const Color(0xFF1E1E1E)
+                            ? (isOled ? Colors.black : const Color(0xFF1E1E1E))
                             : const Color(0xFFF0F0F0),
                   ),
                 // Gradient overlay
@@ -542,6 +546,8 @@ class _BookDetailPageState extends State<BookDetailPage> {
   }
 
   Widget _buildContent(ColorScheme colorScheme) {
+    final settings = ref.watch(settingsProvider);
+    final isOled = settings.oledBlack;
     final book = _bookInfo!;
     // Use initial cover URL if same domain to leverage cache
     final coverUrl =
@@ -565,7 +571,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
               fit: StackFit.expand,
               children: [
                 // Gradient background from extracted colors or fallback
-                if (_gradientColors != null && !_coverLoadFailed)
+                if (!isOled && _gradientColors != null && !_coverLoadFailed)
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -609,7 +615,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                       ),
                     ),
                   )
-                else if (_coverLoadFailed || book.cover.isEmpty)
+                else if (!isOled && (_coverLoadFailed || book.cover.isEmpty))
                   // Fallback: solid gray based on theme
                   Container(
                     color:
@@ -622,7 +628,7 @@ class _BookDetailPageState extends State<BookDetailPage> {
                   Container(
                     color:
                         colorScheme.brightness == Brightness.dark
-                            ? const Color(0xFF1E1E1E)
+                            ? (isOled ? Colors.black : const Color(0xFF1E1E1E))
                             : const Color(0xFFF0F0F0),
                   ),
                 // Gradient overlay for smooth transition to content
