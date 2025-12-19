@@ -143,15 +143,21 @@ class SettingsPage extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(
         child: ListView(
+          padding: EdgeInsets.zero,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-              child: Text(
-                '设置',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+              child: Row(
+                children: [
+                  Text(
+                    '设置',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
 
