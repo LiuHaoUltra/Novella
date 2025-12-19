@@ -143,24 +143,42 @@ class _HomePageState extends ConsumerState<HomePage> {
     final previewBooks = _rankBooks.take(9).toList();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('发现'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const SearchPage()));
-            },
-            tooltip: '搜索',
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: _fetchRanking,
         child: CustomScrollView(
           slivers: [
+            // Big Title Header with Search
+            SliverToBoxAdapter(
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '发现',
+                        style: textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SearchPage(),
+                            ),
+                          );
+                        },
+                        tooltip: '搜索',
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
             // Stats cards section
             SliverToBoxAdapter(
               child: Padding(
