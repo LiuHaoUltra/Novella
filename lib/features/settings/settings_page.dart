@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/utils/font_manager.dart';
+import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
+import 'dart:io' show Platform;
 
 /// Settings state model
 class AppSettings {
@@ -285,6 +287,29 @@ class SettingsPage extends ConsumerWidget {
                 applicationVersion: '1.0.0',
               );
             },
+          ),
+
+          // Debug: RustLib FFI Status
+          ListTile(
+            leading: Icon(
+              rustLibInitialized ? Icons.check_circle : Icons.error,
+              color: rustLibInitialized ? Colors.green : colorScheme.error,
+            ),
+            title: const Text('Rust FFI 状态'),
+            subtitle: Text(
+              rustLibInitialized
+                  ? '已初始化 (${Platform.isIOS
+                      ? "iOS"
+                      : Platform.isMacOS
+                      ? "macOS"
+                      : Platform.isAndroid
+                      ? "Android"
+                      : "Windows"})'
+                  : '初始化失败: ${rustLibInitError ?? "未知错误"}',
+              style: TextStyle(
+                color: rustLibInitialized ? null : colorScheme.error,
+              ),
+            ),
           ),
 
           const SizedBox(height: 32),
