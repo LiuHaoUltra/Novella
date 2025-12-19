@@ -20,12 +20,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. 配置 Rust 环境 (编译静态库必须)
+      # 1. 配置 Rust 环境
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
 
+      # 2. 配置 Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -33,19 +34,16 @@ jobs:
           channel: 'master'
           cache: true
 
-      # 3. [关键] 现场编译 Rust 并放入指定目录
-      # 满足在 .xcconfig 里配置的 -force_load 路径
+      # 3. 编译 Rust 并放入指定目录
       - name: Build and Place Rust Lib
         run: |
           echo "🛠️ Compiling Rust for iOS..."
           cd rust
-          # 编译真机架构 (arm64)
           cargo build --release --target aarch64-apple-ios
           cd ..
           
           echo "📂 Moving lib to ios/Libs..."
           mkdir -p ios/Libs
-          # 复制生成的 .a 文件到 ios/Libs，供 Xcode 链接
           cp rust/target/aarch64-apple-ios/release/libnovella_native.a ios/Libs/
           
           echo "✅ Rust lib placed successfully!"
@@ -54,28 +52,46 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # [新增步骤] 强制禁用 Xcode 签名配置
-      # 这一步会修改 Release.xcconfig，覆盖 project.pbxproj 中的签名设置，避免 CI 报错
-      - name: Disable Code Signing
+      # [重点修改] 5. 核弹级：彻底移除所有签名配置
+      # 即使 project.pbxproj 里写了需要签名，这里也会强行替换掉
+      - name: Nuke Code Signing
         run: |
+          echo "☢️ Nuking code signing configurations..."
+          
+          # 1. 修改 .xcconfig (Target 级别覆盖)
+          # 强制允许不签名，强制不需要签名
           echo "CODE_SIGNING_ALLOWED = NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED = NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY =" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_STYLE = Manual" >> ios/Flutter/Release.xcconfig
+          
+          # 2. 修改 project.pbxproj (Project 级别暴力替换)
+          # 将 "iPhone Developer" 替换为空
+          sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          
+          # 将所有 Automatic 签名模式改为 Manual (避免 Xcode 去找 Team)
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
+          
+          # 再次确认替换结果
+          if grep -q "iPhone Developer" ios/Runner.xcodeproj/project.pbxproj; then
+            echo "❌ Error: Failed to remove 'iPhone Developer' from project file."
+            exit 1
+          else
+            echo "✅ Successfully removed 'iPhone Developer' identity."
+          fi
 
-      # 5. 构建免签 Release 包
+      # 6. 构建免签 Release 包
       - name: Build iOS Release (No Codesign)
         run: flutter build ios --release --no-codesign
 
-      # 6. 打包成 IPA
+      # 7. 打包成 IPA
       - name: Package IPA
         run: |
           mkdir Payload
-          # 将 Runner.app 放入 Payload 文件夹
           mv build/ios/iphoneos/Runner.app Payload
-          # 压缩为 ipa
           zip -r novella.ipa Payload
 
-      # 7. 上传产物
+      # 8. 上传产物
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
