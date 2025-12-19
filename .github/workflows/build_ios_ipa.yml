@@ -54,6 +54,14 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
+      # [新增步骤] 强制禁用 Xcode 签名配置
+      # 这一步会修改 Release.xcconfig，覆盖 project.pbxproj 中的签名设置，避免 CI 报错
+      - name: Disable Code Signing
+        run: |
+          echo "CODE_SIGNING_ALLOWED = NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED = NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY =" >> ios/Flutter/Release.xcconfig
+
       # 5. 构建免签 Release 包
       - name: Build iOS Release (No Codesign)
         run: flutter build ios --release --no-codesign
