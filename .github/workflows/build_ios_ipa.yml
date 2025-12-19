@@ -51,28 +51,42 @@ jobs:
       - name: Flutter Pub Get
         run: flutter pub get
 
-      # 5. [调试步骤] 验证关键文件是否存在
-      # 很多时候是因为 Xcode 找不到这个文件，导致链接失败，然后 Flutter 误报为签名错误
-      - name: Debug - Check File Existence
+      # [新增步骤] 5. 显式安装 Pods
+      # 必须先生成 Pods 项目，我们才能在下一步修改它的签名配置
+      - name: Install CocoaPods Dependencies
         run: |
-          echo "🔍 Checking ios directory structure..."
-          ls -R ios/Libs
-          echo "PWD is: $(pwd)"
+          cd ios
+          pod install
+          cd ..
 
-      # 6. 暴力移除签名配置 (保留这个步骤，因为它仍然是必须的)
+      # [关键修复] 6. 全局暴力移除签名配置 (Runner + Pods)
+      # 这是解决 "PhaseScriptExecution failed" 的关键
       - name: Nuke Code Signing
         run: |
           echo "☢️ Nuking code signing configurations..."
+          
+          # --- 1. 处理 Runner 项目 ---
+          echo "   -> Patching Runner.xcodeproj..."
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Runner.xcodeproj/project.pbxproj
           sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";/g' ios/Runner.xcodeproj/project.pbxproj
+          
+          # --- 2. 处理 Pods 项目 (这是之前漏掉的!) ---
+          echo "   -> Patching Pods.xcodeproj..."
+          # 将 Pods 项目中的所有签名要求强制改为 Manual 和 空
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' ios/Pods/Pods.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer";/CODE_SIGN_IDENTITY = "";/g' ios/Pods/Pods.xcodeproj/project.pbxproj
+          sed -i '' 's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";/g' ios/Pods/Pods.xcodeproj/project.pbxproj
+
+          # --- 3. 处理 xcconfig (双重保险) ---
+          echo "   -> Patching Release.xcconfig..."
           echo "CODE_SIGNING_ALLOWED = NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED = NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY =" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_STYLE = Manual" >> ios/Flutter/Release.xcconfig
+          
+          echo "✅ Code signing configurations nuked for EVERYTHING."
 
-      # 7. [关键修改] 构建免签 Release 包 (开启 --verbose)
-      # 加上 --verbose 后，请仔细检查 CI 日志中红色的 ERROR 部分，
-      # 真正的错误通常隐藏在 "Requires a selected Development Team" 上方几十行的地方。
+      # 7. 构建免签 Release 包 (保持 --verbose 以便排查，如果成功可去掉)
       - name: Build iOS Release (No Codesign)
         run: flutter build ios --release --no-codesign --verbose
 
