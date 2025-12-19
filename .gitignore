@@ -33,7 +33,7 @@ migrate_working_dir/
 .idea/
 
 # VS Code (uncomment if not sharing settings)
-# .vscode/
+.vscode/
 
 # Sublime Text
 *.sublime-workspace
@@ -52,7 +52,6 @@ Session.vim
 .packages
 .pub-cache/
 .pub/
-pubspec.lock
 build/
 **/doc/api/
 **/ios/Flutter/.last_build_id
@@ -181,6 +180,7 @@ ipch/
 rust/target/
 **/*.rs.bk
 Cargo.lock
+rust/.cargo/
 
 # =====================================================
 # Web
@@ -204,3 +204,8 @@ test-results/
 *.orig
 .cache/
 .temp/
+
+# =====================================================
+# Documentation / References
+# =====================================================
+References/

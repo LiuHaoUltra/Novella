@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
+import 'package:novella/features/settings/source_code_page.dart';
 import 'dart:io' show Platform;
 
 /// Settings state model
@@ -380,13 +381,13 @@ class SettingsPage extends ConsumerWidget {
 
             ListTile(
               leading: const Icon(Icons.code),
-              title: const Text('开源协议'),
-              subtitle: const Text('MIT License'),
+              title: const Text('源代码'),
+              trailing: const Icon(Icons.chevron_right, size: 20),
               onTap: () {
-                showLicensePage(
-                  context: context,
-                  applicationName: 'Novella',
-                  applicationVersion: '1.0.0',
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const SourceCodePage(),
+                  ),
                 );
               },
             ),
