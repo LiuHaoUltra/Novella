@@ -230,12 +230,12 @@ class _HistoryPageState extends State<HistoryPage> {
 
     // Grid of books
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         childAspectRatio: 0.58,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 12,
       ),
       itemCount: _books.length,
       itemBuilder: (context, index) => _buildBookItem(_books[index]),
@@ -244,6 +244,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Widget _buildBookItem(Book book) {
     final colorScheme = Theme.of(context).colorScheme;
+    final heroTag = 'history_cover_${book.id}';
 
     return GestureDetector(
       onTap: () {
@@ -255,6 +256,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       bookId: book.id,
                       initialCoverUrl: book.cover,
                       initialTitle: book.title,
+                      heroTag: heroTag,
                     ),
               ),
             )
@@ -271,7 +273,7 @@ class _HistoryPageState extends State<HistoryPage> {
           // Cover
           Expanded(
             child: Hero(
-              tag: 'cover_${book.id}',
+              tag: heroTag,
               child: Card(
                 elevation: 2,
                 shadowColor: colorScheme.shadow.withValues(alpha: 0.3),

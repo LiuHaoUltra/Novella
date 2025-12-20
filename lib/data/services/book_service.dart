@@ -7,13 +7,24 @@ class BookService {
   static final Logger _logger = Logger('BookService');
   final SignalRService _signalRService = SignalRService();
 
-  Future<List<Book>> getLatestBooks({int page = 1, int size = 20}) async {
+  Future<List<Book>> getLatestBooks({
+    int page = 1,
+    int size = 20,
+    bool ignoreJapanese = false,
+    bool ignoreAI = false,
+  }) async {
     try {
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetLatestBookList',
         args: [
           // Request params
-          {'Page': page, 'Size': size, 'Order': 'latest'},
+          {
+            'Page': page,
+            'Size': size,
+            'Order': 'latest',
+            'IgnoreJapanese': ignoreJapanese,
+            'IgnoreAI': ignoreAI,
+          },
           // Options (like reference's defaultRequestOptions)
           {'UseGzip': true},
         ],
@@ -27,6 +38,43 @@ class BookService {
       return [];
     } catch (e) {
       _logger.severe('Failed to get latest books: $e');
+      rethrow;
+    }
+  }
+
+  /// Get book list with pagination, sorting and filtering
+  Future<SearchResult> getBookList({
+    int page = 1,
+    int size = 20,
+    String order = 'latest',
+    bool ignoreJapanese = false,
+    bool ignoreAI = false,
+  }) async {
+    try {
+      final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
+        'GetBookList',
+        args: [
+          {
+            'Page': page,
+            'Size': size,
+            'Order': order,
+            'IgnoreJapanese': ignoreJapanese,
+            'IgnoreAI': ignoreAI,
+          },
+          {'UseGzip': true},
+        ],
+      );
+
+      final List<dynamic> data = result['Data'] ?? [];
+      final int totalPages = result['TotalPages'] ?? 0;
+
+      return SearchResult(
+        books: data.map((e) => Book.fromJson(e)).toList(),
+        totalPages: totalPages,
+        currentPage: page,
+      );
+    } catch (e) {
+      _logger.severe('Failed to get book list: $e');
       rethrow;
     }
   }
@@ -110,12 +158,20 @@ class BookService {
     String keywords, {
     int page = 1,
     int size = 10,
+    bool ignoreJapanese = false,
+    bool ignoreAI = false,
   }) async {
     try {
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetBookList',
         args: [
-          {'Page': page, 'Size': size, 'KeyWords': keywords},
+          {
+            'Page': page,
+            'Size': size,
+            'KeyWords': keywords,
+            'IgnoreJapanese': ignoreJapanese,
+            'IgnoreAI': ignoreAI,
+          },
           {'UseGzip': true},
         ],
       );

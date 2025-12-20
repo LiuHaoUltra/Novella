@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -128,12 +129,14 @@ class BookDetailPage extends ConsumerStatefulWidget {
   final int bookId;
   final String? initialCoverUrl;
   final String? initialTitle;
+  final String? heroTag;
 
   const BookDetailPage({
     super.key,
     required this.bookId,
     this.initialCoverUrl,
     this.initialTitle,
+    this.heroTag,
   });
 
   @override
@@ -149,6 +152,8 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   // Static cache for extracted colors (shared across all instances)
   // Key format: "bookId_dark" or "bookId_light"
   static final Map<String, List<Color>> _colorCache = {};
+  // Static cache for ColorScheme (shared across all instances)
+  static final Map<String, ColorScheme> _schemeCache = {};
 
   BookInfo? _bookInfo;
   ReadPosition? _readPosition;
@@ -162,17 +167,26 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   bool _coverLoadFailed = false;
   bool _colorsExtracted = false; // Track if we already extracted colors
 
+  // Dynamic ColorScheme based on cover image
+  ColorScheme? _dynamicColorScheme;
+
   @override
   void initState() {
     super.initState();
     _loadBookInfo();
     // Delay color extraction to avoid lag during page transition
-    // Start after transition animation (~300ms) to ensure smooth navigation
+    // Use SchedulerBinding to ensure we wait for frame rendering
     if (widget.initialCoverUrl != null && widget.initialCoverUrl!.isNotEmpty) {
-      Future.delayed(const Duration(milliseconds: 350), () {
+      // Wait for page transition to complete (typically ~300-400ms)
+      // Then schedule after next frame to avoid jank
+      Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted && !_colorsExtracted) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          _extractColors(widget.initialCoverUrl!, isDark);
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_colorsExtracted) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              _extractColors(widget.initialCoverUrl!, isDark);
+            }
+          });
         }
       });
     }
@@ -205,9 +219,11 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     // Check cache first - use theme-specific cache key
     final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
-    if (_colorCache.containsKey(cacheKey)) {
-      // Use cached adjusted colors directly
+    if (_colorCache.containsKey(cacheKey) &&
+        _schemeCache.containsKey(cacheKey)) {
+      // Use cached adjusted colors and ColorScheme directly
       _gradientColors = _colorCache[cacheKey]!;
+      _dynamicColorScheme = _schemeCache[cacheKey]!;
       _colorsExtracted = true;
       if (mounted) setState(() {});
       return;
@@ -225,7 +241,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
       // Get colors for Apple Music-style gradient
       final rawColors = <Color>[];
 
-      // Primary: dominant or vibrant
+      // Primary: dominant first (by area coverage), fallback to vibrant
       final primary =
           paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color;
@@ -268,7 +284,27 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
       // Cache the adjusted colors with theme-specific key
       _colorCache[cacheKey] = List.from(adjustedColors);
 
-      if (mounted) setState(() => _gradientColors = adjustedColors);
+      // Generate dynamic ColorScheme using DOMINANT color (by area coverage)
+      // This ensures the main color of the cover is used for theming
+      final seedColor =
+          paletteGenerator.dominantColor?.color ??
+          paletteGenerator.vibrantColor?.color ??
+          rawColors.first;
+
+      final dynamicScheme = ColorScheme.fromSeed(
+        seedColor: seedColor,
+        brightness: isDark ? Brightness.dark : Brightness.light,
+      );
+
+      // Cache the ColorScheme
+      _schemeCache[cacheKey] = dynamicScheme;
+
+      if (mounted) {
+        setState(() {
+          _gradientColors = adjustedColors;
+          _dynamicColorScheme = dynamicScheme;
+        });
+      }
       _colorsExtracted = true;
     } catch (e) {
       _logger.warning('Failed to extract colors: $e');
@@ -360,6 +396,12 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   }
 
   void _startReading({int sortNum = 1}) {
+    // Get cover URL for dynamic color in reader
+    final coverUrl =
+        widget.initialCoverUrl?.isNotEmpty == true
+            ? widget.initialCoverUrl!
+            : (_bookInfo?.cover ?? '');
+
     Navigator.of(context)
         .push(
           MaterialPageRoute(
@@ -368,6 +410,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                   bid: widget.bookId,
                   sortNum: sortNum,
                   totalChapters: _bookInfo!.chapters.length,
+                  coverUrl: coverUrl,
                 ),
           ),
         )
@@ -422,21 +465,46 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    // Use dynamic ColorScheme if available, otherwise fall back to theme default
+    final baseColorScheme = Theme.of(context).colorScheme;
+    final colorScheme = _dynamicColorScheme ?? baseColorScheme;
 
     // Show preview with initial data while loading
     if (_loading &&
         (widget.initialCoverUrl != null || widget.initialTitle != null)) {
-      return Scaffold(body: _buildLoadingPreview(colorScheme));
+      return _buildThemedScaffold(
+        context,
+        colorScheme,
+        _buildLoadingPreview(colorScheme),
+      );
     }
 
-    return Scaffold(
-      body:
-          _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-              ? _buildErrorView()
-              : _buildContent(colorScheme),
+    return _buildThemedScaffold(
+      context,
+      colorScheme,
+      _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? _buildErrorView()
+          : _buildContent(colorScheme),
+    );
+  }
+
+  /// Wrap content with animated Theme override when dynamic ColorScheme is available
+  /// Uses AnimatedTheme for smooth color transitions
+  Widget _buildThemedScaffold(
+    BuildContext context,
+    ColorScheme colorScheme,
+    Widget body,
+  ) {
+    // Always use AnimatedTheme for smooth transitions when colors change
+    return AnimatedTheme(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      data: Theme.of(context).copyWith(
+        colorScheme: _dynamicColorScheme ?? Theme.of(context).colorScheme,
+      ),
+      child: Scaffold(body: body),
     );
   }
 
@@ -509,7 +577,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                     children: [
                       // Cover
                       Hero(
-                        tag: 'cover_${widget.bookId}',
+                        tag: widget.heroTag ?? 'cover_${widget.bookId}',
                         child: Container(
                           width: 100,
                           height: 140,
@@ -741,7 +809,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                     children: [
                       // Floating cover card
                       Hero(
-                        tag: 'cover_${book.id}',
+                        tag: widget.heroTag ?? 'cover_${book.id}',
                         child: Container(
                           width: 100,
                           height: 140,

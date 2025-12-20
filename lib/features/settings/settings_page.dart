@@ -16,7 +16,14 @@ class AppSettings {
   final int fontCacheLimit; // 10-60
   final String homeRankType; // 'daily', 'weekly', 'monthly'
   final bool oledBlack;
-  final bool cleanChapterTitle; // Clean chapter title for continue button
+  final bool cleanChapterTitle;
+  final bool ignoreJapanese;
+  final bool ignoreAI;
+  final List<String> homeModuleOrder;
+  final List<String> enabledHomeModules;
+
+  static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
+  static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
 
   const AppSettings({
     this.fontSize = 18.0,
@@ -28,6 +35,10 @@ class AppSettings {
     this.homeRankType = 'weekly',
     this.oledBlack = false,
     this.cleanChapterTitle = false,
+    this.ignoreJapanese = false,
+    this.ignoreAI = false,
+    this.homeModuleOrder = defaultModuleOrder,
+    this.enabledHomeModules = defaultEnabledModules,
   });
 
   AppSettings copyWith({
@@ -40,6 +51,10 @@ class AppSettings {
     String? homeRankType,
     bool? oledBlack,
     bool? cleanChapterTitle,
+    bool? ignoreJapanese,
+    bool? ignoreAI,
+    List<String>? homeModuleOrder,
+    List<String>? enabledHomeModules,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -51,8 +66,16 @@ class AppSettings {
       homeRankType: homeRankType ?? this.homeRankType,
       oledBlack: oledBlack ?? this.oledBlack,
       cleanChapterTitle: cleanChapterTitle ?? this.cleanChapterTitle,
+      ignoreJapanese: ignoreJapanese ?? this.ignoreJapanese,
+      ignoreAI: ignoreAI ?? this.ignoreAI,
+      homeModuleOrder: homeModuleOrder ?? this.homeModuleOrder,
+      enabledHomeModules: enabledHomeModules ?? this.enabledHomeModules,
     );
   }
+
+  /// Check if a module is enabled
+  bool isModuleEnabled(String moduleId) =>
+      enabledHomeModules.contains(moduleId);
 }
 
 /// Settings notifier using Riverpod 3.x Notifier API
@@ -65,6 +88,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    print(
+      'Loaded settings: ignoreJapanese=${prefs.getBool('setting_ignoreJapanese')}, ignoreAI=${prefs.getBool('setting_ignoreAI')}',
+    );
     state = AppSettings(
       fontSize: prefs.getDouble('setting_fontSize') ?? 18.0,
       theme: prefs.getString('setting_theme') ?? 'system',
@@ -75,6 +101,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
       homeRankType: prefs.getString('setting_homeRankType') ?? 'weekly',
       oledBlack: prefs.getBool('setting_oledBlack') ?? false,
       cleanChapterTitle: prefs.getBool('setting_cleanChapterTitle') ?? false,
+      ignoreJapanese: prefs.getBool('setting_ignoreJapanese') ?? false,
+      ignoreAI: prefs.getBool('setting_ignoreAI') ?? false,
+      homeModuleOrder: List<String>.from(
+        prefs.getStringList('setting_homeModuleOrder') ??
+            AppSettings.defaultModuleOrder,
+      ),
+      enabledHomeModules: List<String>.from(
+        prefs.getStringList('setting_enabledHomeModules') ??
+            AppSettings.defaultEnabledModules,
+      ),
     );
   }
 
@@ -89,6 +125,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setString('setting_homeRankType', state.homeRankType);
     await prefs.setBool('setting_oledBlack', state.oledBlack);
     await prefs.setBool('setting_cleanChapterTitle', state.cleanChapterTitle);
+    await prefs.setBool('setting_ignoreJapanese', state.ignoreJapanese);
+    await prefs.setBool('setting_ignoreAI', state.ignoreAI);
+    await prefs.setStringList('setting_homeModuleOrder', state.homeModuleOrder);
+    await prefs.setStringList(
+      'setting_enabledHomeModules',
+      state.enabledHomeModules,
+    );
   }
 
   void setFontSize(double size) {
@@ -133,6 +176,35 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setCleanChapterTitle(bool value) {
     state = state.copyWith(cleanChapterTitle: value);
+    _save();
+  }
+
+  void setIgnoreJapanese(bool value) {
+    state = state.copyWith(ignoreJapanese: value);
+    _save();
+  }
+
+  void setIgnoreAI(bool value) {
+    state = state.copyWith(ignoreAI: value);
+    _save();
+  }
+
+  void setHomeModuleOrder(List<String> order) {
+    state = state.copyWith(homeModuleOrder: order);
+    _save();
+  }
+
+  void setEnabledHomeModules(List<String> modules) {
+    state = state.copyWith(enabledHomeModules: modules);
+    _save();
+  }
+
+  /// Update both order and enabled modules at once
+  void setHomeModuleConfig({
+    required List<String> order,
+    required List<String> enabled,
+  }) {
+    state = state.copyWith(homeModuleOrder: order, enabledHomeModules: enabled);
     _save();
   }
 }
@@ -212,6 +284,7 @@ class SettingsPage extends ConsumerWidget {
                   () => _showSelectionSheet<String>(
                     context: context,
                     title: '繁简转换',
+                    subtitle: '阅读时自动转换文字',
                     currentValue: settings.convertType,
                     options: const {'none': '关闭', 't2s': '繁→简', 's2t': '简→繁'},
                     icons: const {
@@ -242,20 +315,16 @@ class SettingsPage extends ConsumerWidget {
 
             const Divider(),
 
-            // Appearance Section
-            _buildSectionHeader(context, '外观'),
-
-            // Theme
+            // Content Filtering Section
+            _buildSectionHeader(context, '内容'),
             ListTile(
-              leading: const Icon(Icons.palette_outlined),
-              title: const Text('主题'),
+              leading: const Icon(Icons.filter_list),
+              title: const Text('书籍过滤'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    const {'system': '系统', 'light': '浅色', 'dark': '深色'}[settings
-                            .theme] ??
-                        '系统',
+                    _getFilterSummary(settings),
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.secondary,
                     ),
@@ -264,23 +333,7 @@ class SettingsPage extends ConsumerWidget {
                   const Icon(Icons.chevron_right, size: 20),
                 ],
               ),
-              onTap:
-                  () => _showSelectionSheet<String>(
-                    context: context,
-                    title: '主题',
-                    currentValue: settings.theme,
-                    options: const {
-                      'system': '系统',
-                      'light': '浅色',
-                      'dark': '深色',
-                    },
-                    icons: const {
-                      'system': Icons.auto_mode,
-                      'light': Icons.light_mode,
-                      'dark': Icons.dark_mode,
-                    },
-                    onSelected: (value) => notifier.setTheme(value),
-                  ),
+              onTap: () => _showContentFilterSheet(context),
             ),
 
             // Home Rank Type
@@ -309,6 +362,7 @@ class SettingsPage extends ConsumerWidget {
                   () => _showSelectionSheet<String>(
                     context: context,
                     title: '首页榜单',
+                    subtitle: '选择首页排行榜的时间范围',
                     currentValue: settings.homeRankType,
                     options: const {
                       'daily': '日榜',
@@ -321,6 +375,65 @@ class SettingsPage extends ConsumerWidget {
                       'monthly': Icons.calendar_view_month,
                     },
                     onSelected: (value) => notifier.setHomeRankType(value),
+                  ),
+            ),
+
+            // Home Module Order
+            ListTile(
+              leading: const Icon(Icons.reorder),
+              title: const Text('首页管理'),
+              trailing: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('拖拽调整'),
+                  SizedBox(width: 4),
+                  Icon(Icons.chevron_right, size: 20),
+                ],
+              ),
+              onTap: () => _showModuleOrderSheet(context),
+            ),
+
+            const Divider(),
+
+            // Appearance Section
+            _buildSectionHeader(context, '外观'),
+
+            // Theme
+            ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('主题'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    const {'system': '系统', 'light': '浅色', 'dark': '深色'}[settings
+                            .theme] ??
+                        '系统',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, size: 20),
+                ],
+              ),
+              onTap:
+                  () => _showSelectionSheet<String>(
+                    context: context,
+                    title: '主题',
+                    subtitle: '选择应用的整体外观风格',
+                    currentValue: settings.theme,
+                    options: const {
+                      'system': '系统',
+                      'light': '浅色',
+                      'dark': '深色',
+                    },
+                    icons: const {
+                      'system': Icons.auto_mode,
+                      'light': Icons.light_mode,
+                      'dark': Icons.dark_mode,
+                    },
+                    onSelected: (value) => notifier.setTheme(value),
                   ),
             ),
 
@@ -567,6 +680,7 @@ class SettingsPage extends ConsumerWidget {
   void _showSelectionSheet<T>({
     required BuildContext context,
     required String title,
+    String? subtitle,
     required T currentValue,
     required Map<T, String> options,
     required Map<T, IconData> icons,
@@ -577,6 +691,8 @@ class SettingsPage extends ConsumerWidget {
       useSafeArea: true,
       showDragHandle: true,
       builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        final textTheme = Theme.of(context).textTheme;
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -589,11 +705,21 @@ class SettingsPage extends ConsumerWidget {
                 ),
                 child: Text(
                   title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
+              if (subtitle != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Text(
+                    subtitle,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               ...options.entries.map((entry) {
                 final isSelected = entry.key == currentValue;
                 return ListTile(
@@ -601,25 +727,19 @@ class SettingsPage extends ConsumerWidget {
                     icons[entry.key],
                     color:
                         isSelected
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
                   ),
                   title: Text(
                     entry.value,
                     style: TextStyle(
-                      color:
-                          isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : null,
+                      color: isSelected ? colorScheme.primary : null,
                       fontWeight: isSelected ? FontWeight.bold : null,
                     ),
                   ),
                   trailing:
                       isSelected
-                          ? Icon(
-                            Icons.check,
-                            color: Theme.of(context).colorScheme.primary,
-                          )
+                          ? Icon(Icons.check, color: colorScheme.primary)
                           : null,
                   onTap: () {
                     onSelected(entry.key);
@@ -630,6 +750,326 @@ class SettingsPage extends ConsumerWidget {
               const SizedBox(height: 16),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  String _getFilterSummary(AppSettings settings) {
+    final filters = <String>[];
+    if (settings.ignoreJapanese) filters.add('日语');
+    if (settings.ignoreAI) filters.add('AI');
+    if (filters.isEmpty) return '关闭';
+    return filters.join(', ');
+  }
+
+  void _showContentFilterSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final settings = ref.watch(settingsProvider);
+            final notifier = ref.read(settingsProvider.notifier);
+            final colorScheme = Theme.of(context).colorScheme;
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      '书籍过滤',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      '仅对首页推荐和搜索生效',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.translate,
+                      color:
+                          settings.ignoreJapanese
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(
+                      '忽略日语小说',
+                      style: TextStyle(
+                        color:
+                            settings.ignoreJapanese
+                                ? colorScheme.primary
+                                : null,
+                        fontWeight:
+                            settings.ignoreJapanese ? FontWeight.bold : null,
+                      ),
+                    ),
+                    trailing: Switch(
+                      value: settings.ignoreJapanese,
+                      onChanged: (value) => notifier.setIgnoreJapanese(value),
+                    ),
+                    onTap:
+                        () => notifier.setIgnoreJapanese(
+                          !settings.ignoreJapanese,
+                        ),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.smart_toy_outlined,
+                      color:
+                          settings.ignoreAI
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(
+                      '忽略 AI 生成',
+                      style: TextStyle(
+                        color: settings.ignoreAI ? colorScheme.primary : null,
+                        fontWeight: settings.ignoreAI ? FontWeight.bold : null,
+                      ),
+                    ),
+                    trailing: Switch(
+                      value: settings.ignoreAI,
+                      onChanged: (value) => notifier.setIgnoreAI(value),
+                    ),
+                    onTap: () => notifier.setIgnoreAI(!settings.ignoreAI),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showModuleOrderSheet(BuildContext context) {
+    const moduleLabels = {
+      'stats': '阅读统计',
+      'recentlyUpdated': '最近更新',
+      'ranking': '近期排行',
+    };
+    const moduleIcons = {
+      'stats': Icons.timer_outlined,
+      'recentlyUpdated': Icons.update,
+      'ranking': Icons.leaderboard_outlined,
+    };
+    const allModules = ['stats', 'ranking', 'recentlyUpdated'];
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final settings = ref.watch(settingsProvider);
+            final notifier = ref.read(settingsProvider.notifier);
+            final colorScheme = Theme.of(context).colorScheme;
+            final textTheme = Theme.of(context).textTheme;
+
+            // Separate enabled and disabled modules
+            final enabledModules =
+                settings.homeModuleOrder
+                    .where((m) => settings.enabledHomeModules.contains(m))
+                    .toList();
+            final disabledModules =
+                allModules
+                    .where((m) => !settings.enabledHomeModules.contains(m))
+                    .toList();
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      '首页管理',
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      '点击切换启用状态，拖拽调整顺序',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  // Enabled section header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Text(
+                      '已启用',
+                      style: textTheme.labelMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  // Enabled modules - reorderable
+                  if (enabledModules.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Text(
+                        '无启用模块',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  else
+                    ReorderableListView(
+                      shrinkWrap: true,
+                      buildDefaultDragHandles: false,
+                      physics: const NeverScrollableScrollPhysics(),
+                      onReorder: (oldIndex, newIndex) {
+                        final newEnabledOrder = List<String>.from(
+                          enabledModules,
+                        );
+                        if (newIndex > oldIndex) newIndex -= 1;
+                        final item = newEnabledOrder.removeAt(oldIndex);
+                        newEnabledOrder.insert(newIndex, item);
+                        // Rebuild full order: enabled modules first, then disabled
+                        final newOrder = [
+                          ...newEnabledOrder,
+                          ...disabledModules,
+                        ];
+                        notifier.setHomeModuleOrder(newOrder);
+                      },
+                      children: [
+                        for (int i = 0; i < enabledModules.length; i++)
+                          ListTile(
+                            key: ValueKey(enabledModules[i]),
+                            leading: Icon(
+                              moduleIcons[enabledModules[i]],
+                              color: colorScheme.primary,
+                            ),
+                            title: Text(
+                              moduleLabels[enabledModules[i]] ??
+                                  enabledModules[i],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.remove_circle_outline,
+                                    color: colorScheme.error,
+                                  ),
+                                  onPressed: () {
+                                    final newEnabled = List<String>.from(
+                                      settings.enabledHomeModules,
+                                    )..remove(enabledModules[i]);
+                                    notifier.setEnabledHomeModules(newEnabled);
+                                  },
+                                  tooltip: '禁用',
+                                ),
+                                ReorderableDragStartListener(
+                                  index: i,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Icon(
+                                      Icons.drag_handle,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  // Disabled section header
+                  if (disabledModules.isNotEmpty) ...[
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: Text(
+                        '已禁用',
+                        style: textTheme.labelMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    // Disabled modules - grayed out, tap to enable
+                    ...disabledModules.map(
+                      (moduleId) => ListTile(
+                        leading: Icon(
+                          moduleIcons[moduleId],
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                        title: Text(
+                          moduleLabels[moduleId] ?? moduleId,
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.7,
+                            ),
+                          ),
+                        ),
+                        trailing: IconButton(
+                          icon: Icon(
+                            Icons.add_circle_outline,
+                            color: colorScheme.primary,
+                          ),
+                          onPressed: () {
+                            final newEnabled = List<String>.from(
+                              settings.enabledHomeModules,
+                            )..add(moduleId);
+                            // Also add to order if not present
+                            final newOrder = List<String>.from(
+                              settings.homeModuleOrder,
+                            );
+                            if (!newOrder.contains(moduleId)) {
+                              newOrder.add(moduleId);
+                            }
+                            notifier.setHomeModuleConfig(
+                              order: newOrder,
+                              enabled: newEnabled,
+                            );
+                          },
+                          tooltip: '启用',
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
         );
       },
     );

@@ -23,14 +23,6 @@ class _ShelfPageState extends State<ShelfPage> {
   final Map<int, Book> _bookDetails = {};
   bool _loading = true;
   DateTime? _lastRefreshTime;
-  int _selectedSortIndex = 0;
-
-  // Sort tabs
-  final List<String> _sortLabels = ['默认', '更新', '进度', '书名', '分类'];
-
-  // Navigation
-  String? _currentFolderId;
-  final List<ShelfItem> _breadcrumbs = []; // Track folder history
 
   @override
   void initState() {
@@ -70,8 +62,7 @@ class _ShelfPageState extends State<ShelfPage> {
       // 1. Ensure initialized
       await _userService.ensureInitialized();
 
-      // 2. Get items for current folder and fetch book details
-      // Use force: force to allow reading from cache
+      // 2. Get items and fetch book details
       await _refreshGrid(force: force);
     } catch (e) {
       _logger.severe('Error fetching shelf: $e');
@@ -87,21 +78,18 @@ class _ShelfPageState extends State<ShelfPage> {
   }
 
   Future<void> _refreshGrid({bool force = false}) async {
-    // 2. Get items for current folder.
-    // We fetch full shelf first to ensure cache is hot if forcing.
+    // Fetch full shelf first to ensure cache is hot if forcing.
     if (force) {
       await _userService.getShelf(forceRefresh: true);
     }
 
-    // Read from cache (or recently fetched)
-    final items = _userService.getShelfItems(_currentFolderId);
+    // Read from cache (or recently fetched) - only get books (no folders)
+    final allItems = _userService.getShelfItems(null);
+    final bookItems =
+        allItems.where((e) => e.type == ShelfItemType.book).toList();
 
-    // 3. Extract book IDs and fetch details
-    final bookIds =
-        items
-            .where((e) => e.type == ShelfItemType.book)
-            .map((e) => e.id as int)
-            .toList();
+    // Extract book IDs and fetch details
+    final bookIds = bookItems.map((e) => e.id as int).toList();
 
     if (bookIds.isNotEmpty) {
       try {
@@ -119,71 +107,10 @@ class _ShelfPageState extends State<ShelfPage> {
 
     if (mounted) {
       setState(() {
-        _items = items;
+        _items = bookItems;
         _loading = false;
         _lastRefreshTime = DateTime.now();
       });
-    }
-  }
-
-  void _enterFolder(ShelfItem folder) {
-    setState(() {
-      _breadcrumbs.add(folder);
-      _currentFolderId = folder.id as String;
-    });
-    // Navigation doesn't need to force refresh from server, just filter local cache
-    _refreshGrid(force: false);
-  }
-
-  void _navigateBack() {
-    if (_breadcrumbs.isEmpty) return;
-
-    setState(() {
-      _breadcrumbs.removeLast();
-      _currentFolderId =
-          _breadcrumbs.isEmpty ? null : _breadcrumbs.last.id as String;
-    });
-    // Navigation doesn't need to force refresh from server
-    _refreshGrid(force: false);
-  }
-
-  Future<void> _createFolder() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('新建文件夹'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(hintText: '文件夹名称'),
-              autofocus: true,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, controller.text.trim()),
-                child: const Text('创建'),
-              ),
-            ],
-          ),
-    );
-
-    if (name != null && name.isNotEmpty) {
-      final id = await _userService.createFolder(name);
-      if (id != null) {
-        // Optimistic refresh: update grid from local cache immediately
-        _refreshGrid(force: false);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('创建失败或重名')));
-        }
-      }
     }
   }
 
@@ -192,73 +119,58 @@ class _ShelfPageState extends State<ShelfPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return PopScope(
-      canPop: _breadcrumbs.isEmpty,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) {
-          _navigateBack();
-        }
-      },
-      child: Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Custom header
-              _buildHeader(context, colorScheme, textTheme),
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Custom header
+            _buildHeader(context, colorScheme, textTheme),
 
-              // Sort tabs
-              _buildSortTabs(context, colorScheme),
-
-              // Content
-              Expanded(
-                child:
-                    _loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _items.isEmpty
-                        ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.bookmark_border,
-                                size: 64,
+            // Content
+            Expanded(
+              child:
+                  _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _items.isEmpty
+                      ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.bookmark_border,
+                              size: 64,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '书架空空如也',
+                              style: textTheme.bodyLarge?.copyWith(
                                 color: colorScheme.onSurfaceVariant,
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '书架空空如也',
-                                style: textTheme.bodyLarge?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        : RefreshIndicator(
-                          onRefresh: () => _fetchShelf(force: true),
-                          child: GridView.builder(
-                            padding: const EdgeInsets.all(12),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 3,
-                                  childAspectRatio: 0.58,
-                                  crossAxisSpacing: 10,
-                                  mainAxisSpacing: 12,
-                                ),
-                            itemCount: _items.length,
-                            itemBuilder: (context, index) {
-                              final item = _items[index];
-                              if (item.type == ShelfItemType.folder) {
-                                return _buildFolderItem(item);
-                              } else {
-                                return _buildBookItem(item);
-                              }
-                            },
-                          ),
+                            ),
+                          ],
                         ),
-              ),
-            ],
-          ),
+                      )
+                      : RefreshIndicator(
+                        onRefresh: () => _fetchShelf(force: true),
+                        child: GridView.builder(
+                          padding: const EdgeInsets.all(12),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                childAspectRatio: 0.58,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 12,
+                              ),
+                          itemCount: _items.length,
+                          itemBuilder: (context, index) {
+                            final item = _items[index];
+                            return _buildBookItem(item);
+                          },
+                        ),
+                      ),
+            ),
+          ],
         ),
       ),
     );
@@ -273,42 +185,16 @@ class _ShelfPageState extends State<ShelfPage> {
       padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
       child: Row(
         children: [
-          // Back button or title
-          if (_breadcrumbs.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: _navigateBack,
-                style: IconButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(40, 40),
-                ),
-              ),
-            ),
-
           // Title
           Expanded(
             child: Text(
-              _breadcrumbs.isEmpty ? '书架' : _breadcrumbs.last.title,
+              '书架',
               style: textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: colorScheme.onSurface,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
           ),
-
-          // Action buttons
-          if (_breadcrumbs.isEmpty) ...[
-            IconButton(
-              onPressed: _createFolder,
-              icon: const Icon(
-                Icons.create_new_folder_outlined,
-              ), // More minimal icon
-              tooltip: '新建文件夹',
-            ),
-          ],
 
           // Refresh button
           IconButton(
@@ -321,96 +207,11 @@ class _ShelfPageState extends State<ShelfPage> {
     );
   }
 
-  Widget _buildSortTabs(BuildContext context, ColorScheme colorScheme) {
-    return SizedBox(
-      height: 40,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: _sortLabels.length,
-        itemBuilder: (context, index) {
-          final isSelected = _selectedSortIndex == index;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: TextButton(
-              onPressed: () {
-                setState(() {
-                  _selectedSortIndex = index;
-                });
-                // TODO: Implement actual sorting logic
-              },
-              style: TextButton.styleFrom(
-                foregroundColor:
-                    isSelected
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              child: Text(
-                _sortLabels[index],
-                style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildFolderItem(ShelfItem item) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return GestureDetector(
-      onTap: () => _enterFolder(item),
-      onLongPress: () => _showFolderOptions(item),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: Card(
-              elevation: 0,
-              color: colorScheme.surfaceContainerHighest,
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.folder_outlined,
-                  size: 48,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 36, // Fixed height for 2 lines of text
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
-              child: Text(
-                item.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurface,
-                  height: 1.2,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBookItem(ShelfItem item) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final book = _bookDetails[item.id];
+    final heroTag = 'shelf_cover_${item.id}';
 
     return GestureDetector(
       onTap: () async {
@@ -421,6 +222,7 @@ class _ShelfPageState extends State<ShelfPage> {
                   bookId: item.id as int,
                   initialCoverUrl: book?.cover,
                   initialTitle: book?.title,
+                  heroTag: heroTag,
                 ),
           ),
         );
@@ -432,43 +234,48 @@ class _ShelfPageState extends State<ShelfPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Card(
-              elevation: 2,
-              shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            child: Hero(
+              tag: heroTag,
+              child: Card(
+                elevation: 2,
+                shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child:
+                    book == null
+                        ? Container(
+                          color: colorScheme.surfaceContainerHighest,
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                        : CachedNetworkImage(
+                          imageUrl: book.cover,
+                          fit: BoxFit.cover,
+                          placeholder:
+                              (context, url) => Container(
+                                color: colorScheme.surfaceContainerHighest,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.book_outlined,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                          errorWidget:
+                              (context, url, error) => Container(
+                                color: colorScheme.surfaceContainerHighest,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                        ),
               ),
-              child:
-                  book == null
-                      ? Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: const Center(child: CircularProgressIndicator()),
-                      )
-                      : CachedNetworkImage(
-                        imageUrl: book.cover,
-                        fit: BoxFit.cover,
-                        placeholder:
-                            (context, url) => Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.book_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                        errorWidget:
-                            (context, url, error) => Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.broken_image_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                      ),
             ),
           ),
           SizedBox(
@@ -489,31 +296,6 @@ class _ShelfPageState extends State<ShelfPage> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showFolderOptions(ShelfItem item) {
-    showModalBottomSheet(
-      context: context,
-      builder:
-          (context) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.red),
-                  title: const Text(
-                    '删除文件夹',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _confirmDeleteFolder(item);
-                  },
-                ),
-              ],
-            ),
-          ),
     );
   }
 
@@ -540,33 +322,6 @@ class _ShelfPageState extends State<ShelfPage> {
             ),
           ),
     );
-  }
-
-  Future<void> _confirmDeleteFolder(ShelfItem item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('删除 "${item.title}"?'),
-            content: const Text('文件夹内的书籍将被移动到书架根目录。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('删除'),
-              ),
-            ],
-          ),
-    );
-
-    if (confirmed == true) {
-      await _userService.deleteFolder(item.id as String);
-      // Optimistic refresh
-      _refreshGrid(force: false);
-    }
   }
 
   Future<void> _confirmRemoveBook(ShelfItem item, String title) async {

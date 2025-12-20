@@ -5,15 +5,17 @@ import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/features/settings/settings_page.dart';
 
-class SearchPage extends StatefulWidget {
+class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({super.key});
 
   @override
-  State<SearchPage> createState() => _SearchPageState();
+  ConsumerState<SearchPage> createState() => _SearchPageState();
 }
 
-class _SearchPageState extends State<SearchPage> {
+class _SearchPageState extends ConsumerState<SearchPage> {
   final _logger = Logger('SearchPage');
   final _bookService = BookService();
   final _searchController = TextEditingController();
@@ -120,10 +122,13 @@ class _SearchPageState extends State<SearchPage> {
     });
 
     try {
+      final settings = ref.read(settingsProvider);
       final result = await _bookService.searchBooks(
         keyword,
         page: page,
         size: 9,
+        ignoreJapanese: settings.ignoreJapanese,
+        ignoreAI: settings.ignoreAI,
       );
       setState(() {
         _results = result.books;
@@ -376,6 +381,7 @@ class _SearchPageState extends State<SearchPage> {
   Widget _buildBookCard(BuildContext context, Book book) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final heroTag = 'search_cover_${book.id}';
 
     return GestureDetector(
       onTap: () {
@@ -386,6 +392,7 @@ class _SearchPageState extends State<SearchPage> {
                   bookId: book.id,
                   initialCoverUrl: book.cover,
                   initialTitle: book.title,
+                  heroTag: heroTag,
                 ),
           ),
         );
@@ -394,38 +401,41 @@ class _SearchPageState extends State<SearchPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Card(
-              elevation: 2,
-              shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: CachedNetworkImage(
-                imageUrl: book.cover,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                placeholder:
-                    (context, url) => Container(
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Center(
-                        child: Icon(
-                          Icons.book_outlined,
-                          color: colorScheme.onSurfaceVariant,
+            child: Hero(
+              tag: heroTag,
+              child: Card(
+                elevation: 2,
+                shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: CachedNetworkImage(
+                  imageUrl: book.cover,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  placeholder:
+                      (context, url) => Container(
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Center(
+                          child: Icon(
+                            Icons.book_outlined,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
-                errorWidget:
-                    (context, url, error) => Container(
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Center(
-                        child: Icon(
-                          Icons.broken_image_outlined,
-                          color: colorScheme.onSurfaceVariant,
+                  errorWidget:
+                      (context, url, error) => Container(
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
+                ),
               ),
             ),
           ),

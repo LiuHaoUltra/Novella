@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
@@ -9,17 +10,20 @@ import 'package:novella/data/services/chapter_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 class ReaderPage extends ConsumerStatefulWidget {
   final int bid;
   final int sortNum;
   final int totalChapters;
+  final String? coverUrl; // Optional cover URL for dynamic color
 
   const ReaderPage({
     super.key,
     required this.bid,
     required this.sortNum,
     required this.totalChapters,
+    this.coverUrl,
   });
 
   @override
@@ -42,10 +46,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   bool _initialScrollDone = false;
   bool _barsVisible = true;
 
+  // Dynamic ColorScheme based on cover image
+  ColorScheme? _dynamicColorScheme;
+
   // Debounce timer for scroll position saving
   Timer? _savePositionTimer;
   // Cache last position for synchronous save on dispose
   double _lastScrollPercent = 0.0;
+
+  // Static cache for ColorScheme (shared across all reader instances)
+  static final Map<String, ColorScheme> _schemeCache = {};
 
   @override
   void initState() {
@@ -55,6 +65,56 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     _loadChapter(widget.bid, widget.sortNum);
     // Start reading time tracking
     _readingTimeService.startSession();
+    // Extract colors from cover for dynamic theme
+    _extractColors();
+  }
+
+  /// Extract colors from cover image and generate dynamic ColorScheme
+  Future<void> _extractColors() async {
+    if (widget.coverUrl == null || widget.coverUrl!.isEmpty) return;
+
+    final brightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final isDark = brightness == Brightness.dark;
+    final cacheKey = '${widget.bid}_${isDark ? 'dark' : 'light'}';
+
+    // Check cache first
+    if (_schemeCache.containsKey(cacheKey)) {
+      if (mounted) {
+        setState(() {
+          _dynamicColorScheme = _schemeCache[cacheKey]!;
+        });
+      }
+      return;
+    }
+
+    try {
+      final paletteGenerator = await PaletteGenerator.fromImageProvider(
+        CachedNetworkImageProvider(widget.coverUrl!),
+        size: const Size(24, 24),
+        maximumColorCount: 3,
+      );
+
+      // Use DOMINANT color first (by area coverage) for better cover representation
+      final seedColor =
+          paletteGenerator.dominantColor?.color ??
+          paletteGenerator.vibrantColor?.color ??
+          paletteGenerator.mutedColor?.color;
+
+      if (seedColor != null && mounted) {
+        final scheme = ColorScheme.fromSeed(
+          seedColor: seedColor,
+          brightness: isDark ? Brightness.dark : Brightness.light,
+        );
+        // Cache the result
+        _schemeCache[cacheKey] = scheme;
+        setState(() {
+          _dynamicColorScheme = scheme;
+        });
+      }
+    } catch (e) {
+      _logger.warning('Failed to extract colors for reader: $e');
+    }
   }
 
   @override
@@ -283,7 +343,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
-    return Scaffold(
+    Widget content = Scaffold(
       body: Stack(
         children: [
           // 1. Main Content Layer
@@ -327,6 +387,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           _buildBlurOverlay(context),
         ],
       ),
+    );
+
+    // Use AnimatedTheme for smooth color transitions
+    return AnimatedTheme(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      data: Theme.of(context).copyWith(
+        colorScheme: _dynamicColorScheme ?? Theme.of(context).colorScheme,
+      ),
+      child: content,
     );
   }
 

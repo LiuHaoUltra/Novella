@@ -1,20 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 
-class RankingPage extends StatefulWidget {
+class RankingPage extends ConsumerStatefulWidget {
   final String initialType; // 'daily', 'weekly', 'monthly'
 
   const RankingPage({super.key, this.initialType = 'weekly'});
 
   @override
-  State<RankingPage> createState() => _RankingPageState();
+  ConsumerState<RankingPage> createState() => _RankingPageState();
 }
 
-class _RankingPageState extends State<RankingPage>
+class _RankingPageState extends ConsumerState<RankingPage>
     with SingleTickerProviderStateMixin {
   final _logger = Logger('RankingPage');
   final _bookService = BookService();
@@ -143,6 +144,7 @@ class _RankingPageState extends State<RankingPage>
   Widget _buildBookCard(BuildContext context, Book book, int rank) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final heroTag = 'ranking_cover_${book.id}';
 
     return GestureDetector(
       onTap: () {
@@ -153,6 +155,7 @@ class _RankingPageState extends State<RankingPage>
                   bookId: book.id,
                   initialCoverUrl: book.cover,
                   initialTitle: book.title,
+                  heroTag: heroTag,
                 ),
           ),
         );
@@ -163,38 +166,41 @@ class _RankingPageState extends State<RankingPage>
           Expanded(
             child: Stack(
               children: [
-                Card(
-                  elevation: 2,
-                  shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                  clipBehavior: Clip.antiAlias,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: CachedNetworkImage(
-                    imageUrl: book.cover,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    placeholder:
-                        (context, url) => Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Center(
-                            child: Icon(
-                              Icons.book_outlined,
-                              color: colorScheme.onSurfaceVariant,
+                Hero(
+                  tag: heroTag,
+                  child: Card(
+                    elevation: 2,
+                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: CachedNetworkImage(
+                      imageUrl: book.cover,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      placeholder:
+                          (context, url) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Center(
+                              child: Icon(
+                                Icons.book_outlined,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
-                        ),
-                    errorWidget:
-                        (context, url, error) => Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Center(
-                            child: Icon(
-                              Icons.broken_image_outlined,
-                              color: colorScheme.onSurfaceVariant,
+                      errorWidget:
+                          (context, url, error) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
-                        ),
+                    ),
                   ),
                 ),
                 // Rank badge for top 3
