@@ -13,11 +13,13 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
+  final _shelfKey = GlobalKey<ShelfPageState>();
+  final _historyKey = GlobalKey<HistoryPageState>();
 
-  final List<Widget> _pages = [
+  late final List<Widget> _pages = [
     const HomePage(),
-    const ShelfPage(),
-    const HistoryPage(),
+    ShelfPage(key: _shelfKey),
+    HistoryPage(key: _historyKey),
     const SettingsPage(),
   ];
 
@@ -50,6 +52,12 @@ class _MainPageState extends State<MainPage> {
             setState(() {
               _currentIndex = index;
             });
+            // Refresh pages when switched to their tab
+            if (index == 1) {
+              _shelfKey.currentState?.refresh();
+            } else if (index == 2) {
+              _historyKey.currentState?.refresh();
+            }
           },
           destinations: const [
             NavigationDestination(

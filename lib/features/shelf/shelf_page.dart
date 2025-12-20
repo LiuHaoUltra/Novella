@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
+import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
@@ -10,19 +11,24 @@ class ShelfPage extends StatefulWidget {
   const ShelfPage({super.key});
 
   @override
-  State<ShelfPage> createState() => _ShelfPageState();
+  State<ShelfPage> createState() => ShelfPageState();
 }
 
-class _ShelfPageState extends State<ShelfPage> {
+class ShelfPageState extends State<ShelfPage> {
   final _logger = Logger('ShelfPage');
   final _bookService = BookService();
   final _userService = UserService();
+  final _bookMarkService = BookMarkService();
 
   // State
   List<ShelfItem> _items = [];
   final Map<int, Book> _bookDetails = {};
   bool _loading = true;
   DateTime? _lastRefreshTime;
+
+  // Filter state - 0: default (all), 1: toRead, 2: reading, 3: finished
+  int _selectedFilter = 0;
+  Set<int> _markedBookIds = {};
 
   @override
   void initState() {
@@ -43,6 +49,12 @@ class _ShelfPageState extends State<ShelfPage> {
       // Refresh local view from cache
       _refreshGrid(force: false);
     }
+  }
+
+  /// Public method to refresh shelf from outside (silent, no loading indicator)
+  void refresh() {
+    // Use silent refresh to avoid showing loading spinner
+    _refreshGrid(force: true);
   }
 
   Future<void> _fetchShelf({bool force = false}) async {
@@ -84,7 +96,7 @@ class _ShelfPageState extends State<ShelfPage> {
     }
 
     // Read from cache (or recently fetched) - only get books (no folders)
-    final allItems = _userService.getShelfItems(null);
+    final allItems = _userService.getShelfItems();
     final bookItems =
         allItems.where((e) => e.type == ShelfItemType.book).toList();
 
@@ -126,49 +138,69 @@ class _ShelfPageState extends State<ShelfPage> {
             // Custom header
             _buildHeader(context, colorScheme, textTheme),
 
+            // Filter tabs
+            _buildFilterTabs(colorScheme),
+
             // Content
             Expanded(
-              child:
-                  _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _items.isEmpty
-                      ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.bookmark_border,
-                              size: 64,
+              child: Builder(
+                builder: (context) {
+                  // Compute filtered items
+                  final displayItems =
+                      _selectedFilter == 0
+                          ? _items
+                          : _items
+                              .where((item) => _markedBookIds.contains(item.id))
+                              .toList();
+
+                  if (_loading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (displayItems.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _selectedFilter == 0
+                                ? Icons.bookmark_border
+                                : _getFilterIcon(_selectedFilter),
+                            size: 64,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _selectedFilter == 0
+                                ? '书架空空如也'
+                                : '没有标记为${_getFilterLabel(_selectedFilter)}的书籍',
+                            style: textTheme.bodyLarge?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              '书架空空如也',
-                              style: textTheme.bodyLarge?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                      : RefreshIndicator(
-                        onRefresh: () => _fetchShelf(force: true),
-                        child: GridView.builder(
-                          padding: const EdgeInsets.all(12),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                childAspectRatio: 0.58,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 12,
-                              ),
-                          itemCount: _items.length,
-                          itemBuilder: (context, index) {
-                            final item = _items[index];
-                            return _buildBookItem(item);
-                          },
-                        ),
+                          ),
+                        ],
                       ),
+                    );
+                  }
+                  return RefreshIndicator(
+                    onRefresh: () => _fetchShelf(force: true),
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(12),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 0.58,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 12,
+                          ),
+                      itemCount: displayItems.length,
+                      itemBuilder: (context, index) {
+                        final item = displayItems[index];
+                        return _buildBookItem(item);
+                      },
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -207,6 +239,104 @@ class _ShelfPageState extends State<ShelfPage> {
     );
   }
 
+  /// Build the filter tabs row
+  Widget _buildFilterTabs(ColorScheme colorScheme) {
+    final labels = ['默认', '待读', '在读', '已读'];
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: labels.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final isSelected = _selectedFilter == index;
+          return Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              onTap: () => _onFilterChanged(index),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  labels[index],
+                  style: TextStyle(
+                    color:
+                        isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Handle filter tab change
+  Future<void> _onFilterChanged(int filterIndex) async {
+    if (filterIndex == _selectedFilter) return;
+
+    setState(() {
+      _selectedFilter = filterIndex;
+    });
+
+    // For non-default filter, load marked book IDs from local storage
+    if (filterIndex > 0) {
+      final status = BookMarkStatus.values[filterIndex];
+      final markedIds = await _bookMarkService.getBooksWithStatus(status);
+      if (mounted) {
+        setState(() {
+          _markedBookIds = markedIds;
+        });
+      }
+    } else {
+      // Reset to show all
+      if (mounted) {
+        setState(() {
+          _markedBookIds = {};
+        });
+      }
+    }
+  }
+
+  /// Get icon for filter index
+  IconData _getFilterIcon(int filterIndex) {
+    switch (filterIndex) {
+      case 1:
+        return Icons.schedule;
+      case 2:
+        return Icons.auto_stories;
+      case 3:
+        return Icons.check_circle_outline;
+      default:
+        return Icons.bookmark_border;
+    }
+  }
+
+  /// Get label for filter index
+  String _getFilterLabel(int filterIndex) {
+    switch (filterIndex) {
+      case 1:
+        return '待读';
+      case 2:
+        return '在读';
+      case 3:
+        return '已读';
+      default:
+        return '';
+    }
+  }
+
   Widget _buildBookItem(ShelfItem item) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
@@ -228,6 +358,16 @@ class _ShelfPageState extends State<ShelfPage> {
         );
         // Refresh grid when returning from detail page to reflect any changes
         _refreshGrid();
+        // Also refresh marked book IDs if filter is active
+        if (_selectedFilter > 0) {
+          final status = BookMarkStatus.values[_selectedFilter];
+          final markedIds = await _bookMarkService.getBooksWithStatus(status);
+          if (mounted) {
+            setState(() {
+              _markedBookIds = markedIds;
+            });
+          }
+        }
       },
       onLongPress: () => _showBookOptions(item, book?.title ?? 'Book'),
       child: Column(

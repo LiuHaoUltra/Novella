@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
@@ -148,6 +149,10 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   final _bookService = BookService();
   final _progressService = ReadingProgressService();
   final _userService = UserService();
+  final _bookMarkService = BookMarkService();
+
+  // Local book mark status
+  BookMarkStatus _currentMark = BookMarkStatus.none;
 
   // Static cache for extracted colors (shared across all instances)
   // Key format: "bookId_dark" or "bookId_light"
@@ -373,10 +378,13 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
       if (mounted) {
         // Check theme for color adjustment
         final isDark = Theme.of(context).brightness == Brightness.dark;
+        // Load local book mark status
+        final mark = await _bookMarkService.getBookMark(widget.bookId);
         setState(() {
           _bookInfo = info;
           _readPosition = position;
           _isInShelf = _userService.isInShelf(widget.bookId);
+          _currentMark = mark;
           _loading = false;
         });
         // Only extract colors if not already done from initial cover
@@ -461,6 +469,148 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         setState(() => _shelfLoading = false);
       }
     }
+  }
+
+  /// Get the icon for a mark status
+  IconData _getMarkIcon(BookMarkStatus status) {
+    switch (status) {
+      case BookMarkStatus.none:
+        return Icons.bookmark_border;
+      case BookMarkStatus.toRead:
+        return Icons.schedule;
+      case BookMarkStatus.reading:
+        return Icons.auto_stories;
+      case BookMarkStatus.finished:
+        return Icons.check_circle_outline;
+    }
+  }
+
+  /// Show bottom sheet to mark book status
+  void _showMarkBookSheet() {
+    // Check if book is in shelf first
+    if (!_isInShelf) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先将书籍加入书架'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    showModalBottomSheet(
+      context: context,
+      builder:
+          (context) => SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      '标记此书籍',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Subtitle
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      '选择当前状态',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Options
+                  _buildMarkOption(
+                    context,
+                    BookMarkStatus.toRead,
+                    Icons.schedule,
+                    '待读',
+                    colorScheme,
+                  ),
+                  _buildMarkOption(
+                    context,
+                    BookMarkStatus.reading,
+                    Icons.auto_stories,
+                    '在读',
+                    colorScheme,
+                  ),
+                  _buildMarkOption(
+                    context,
+                    BookMarkStatus.finished,
+                    Icons.check_circle_outline,
+                    '已读',
+                    colorScheme,
+                  ),
+                  // Clear mark option if already marked
+                  if (_currentMark != BookMarkStatus.none)
+                    _buildMarkOption(
+                      context,
+                      BookMarkStatus.none,
+                      Icons.clear,
+                      '清除标记',
+                      colorScheme,
+                    ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
+  Widget _buildMarkOption(
+    BuildContext context,
+    BookMarkStatus status,
+    IconData icon,
+    String label,
+    ColorScheme colorScheme,
+  ) {
+    final isSelected = _currentMark == status;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+      leading: Icon(
+        icon,
+        color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: isSelected ? colorScheme.primary : null,
+          fontWeight: isSelected ? FontWeight.bold : null,
+        ),
+      ),
+      trailing:
+          isSelected ? Icon(Icons.check, color: colorScheme.primary) : null,
+      onTap: () async {
+        Navigator.pop(context);
+        await _bookMarkService.setBookMark(widget.bookId, status);
+        if (mounted) {
+          setState(() {
+            _currentMark = status;
+          });
+          if (status != BookMarkStatus.none) {
+            ScaffoldMessenger.of(this.context).showSnackBar(
+              SnackBar(
+                content: Text('已标记为${status.displayName}'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        }
+      },
+    );
   }
 
   @override
@@ -906,6 +1056,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     _buildMetaChip(
                       Icons.favorite_outline,
@@ -922,6 +1073,13 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                       '${book.chapters.length} 章',
                       colorScheme,
                     ),
+                    // Show mark status chip if marked
+                    if (_currentMark != BookMarkStatus.none)
+                      _buildMetaChip(
+                        _getMarkIcon(_currentMark),
+                        _currentMark.displayName,
+                        colorScheme,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -954,6 +1112,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                           borderRadius: BorderRadius.circular(16),
                           child: InkWell(
                             onTap: _toggleShelf,
+                            onLongPress: _showMarkBookSheet,
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               width: 56,
@@ -1215,13 +1374,15 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   Widget _buildMetaChip(IconData icon, String value, ColorScheme colorScheme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withAlpha(180),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
           const SizedBox(width: 4),
