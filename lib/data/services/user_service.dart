@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/data/models/book.dart';
-import 'package:uuid/uuid.dart';
 
 class UserService extends ChangeNotifier {
   static final Logger _logger = Logger('UserService');
@@ -17,8 +16,6 @@ class UserService extends ChangeNotifier {
   // Local cache of shelf items
   List<Map<String, dynamic>> _shelfCache = [];
   bool _initialized = false;
-
-  final Uuid _uuid = const Uuid();
 
   /// Ensure shelf data is loaded from server
   Future<void> ensureInitialized() async {
@@ -77,18 +74,11 @@ class UserService extends ChangeNotifier {
     }
   }
 
-  /// Get items in a specific folder (or root)
-  List<ShelfItem> getShelfItems(String? parentId) {
+  /// Get all shelf items (books only, sorted by index)
+  List<ShelfItem> getShelfItems() {
     if (!_initialized) return [];
 
-    final rawItems =
-        _shelfCache.where((e) {
-          final parents = (e['parents'] as List?) ?? [];
-          if (parentId == null) {
-            return parents.isEmpty;
-          }
-          return parents.isNotEmpty && parents.last.toString() == parentId;
-        }).toList();
+    final rawItems = _shelfCache.toList();
 
     // Sort by index
     rawItems.sort((a, b) {
@@ -100,118 +90,19 @@ class UserService extends ChangeNotifier {
     return rawItems.map((e) => ShelfItem.fromJson(e)).toList();
   }
 
-  /// Create a new folder
-  Future<String?> createFolder(String name) async {
-    try {
-      await ensureInitialized();
-
-      // Check duplicate name in root (simple check for now)
-      final isDuplicate = _shelfCache.any(
-        (e) =>
-            e['type'] == 'FOLDER' &&
-            e['title'] == name &&
-            ((e['parents'] as List?)?.isEmpty ?? true),
-      );
-
-      if (isDuplicate) {
-        _logger.warning('Folder "$name" already exists in root');
-        // Optionally return error or just null
-        return null;
-      }
-
-      final folderId = _uuid.v4();
-
-      final newItem = {
-        'type': 'FOLDER',
-        'id': folderId,
-        'title': name,
-        'index': 0, // Insert at top like Web
-        'parents': <String>[],
-        'updateAt': DateTime.now().toIso8601String(),
-      };
-
-      // Find max index to shift others if we want 'top' insertion
-      // For simplicity, let's insert at top (index 0) and shift others?
-      // Or just insert at 0 and re-index root items.
-      _reIndexRootItems(insertAtTop: true);
-      newItem['index'] = 0;
-
-      // Add to cache
-      _shelfCache.add(newItem);
-
-      // Optimistic update
-      notifyListeners();
-      _saveShelfToServer();
-      return folderId;
-    } catch (e) {
-      _logger.severe('Failed to create folder: $e');
-      return null;
-    }
-  }
-
-  /// Delete a folder
-  Future<bool> deleteFolder(String folderId) async {
-    try {
-      await ensureInitialized();
-
-      // Find the folder
-      final folderIndex = _shelfCache.indexWhere(
-        (e) => e['type'] == 'FOLDER' && e['id'] == folderId,
-      );
-
-      if (folderIndex == -1) return false;
-
-      // Flatten children: Move children in this folder to Root
-      // Iterate copy of cache to safely modify
-      for (var item in _shelfCache) {
-        final parents = (item['parents'] as List?) ?? [];
-        if (parents.isNotEmpty && parents.last.toString() == folderId) {
-          // It's a clear direct child. Move to root.
-          item['parents'] = [];
-          // Append to end of root
-          // Realistically index calculation needed.
-          // For now set to a high number? Or just 0 and re-index later.
-          // Let's rely on loose indexing for now or re-index root.
-        } else if (parents.contains(folderId)) {
-          // Nested deep child? Flattening usually means moving direct children up.
-          // Web implementation moves to root: item.parents = []
-          item['parents'] = [];
-        }
-      }
-
-      _shelfCache.removeAt(folderIndex);
-
-      // Re-index root for cleanliness
-      _reIndexRootItems();
-
-      // Optimistic
-      notifyListeners();
-      _saveShelfToServer();
-      return true;
-    } catch (e) {
-      _logger.severe('Failed to delete folder: $e');
-      return false;
-    }
-  }
-
-  void _reIndexRootItems({bool insertAtTop = false}) {
-    // Filter root items
-    final rootItems =
-        _shelfCache.where((e) {
-          final parents = (e['parents'] as List?) ?? [];
-          return parents.isEmpty;
-        }).toList();
-
+  /// Re-index all items to make room at index 0 for new items
+  void _reIndexItems() {
     // Sort by current index
-    rootItems.sort((a, b) {
+    final items = _shelfCache.toList();
+    items.sort((a, b) {
       final indexA = a['index'] as int? ?? 0;
       final indexB = b['index'] as int? ?? 0;
       return indexA.compareTo(indexB);
     });
 
-    // Reassign indices
-    for (var i = 0; i < rootItems.length; i++) {
-      rootItems[i]['index'] = insertAtTop ? i + 1 : i;
+    // Reassign indices starting from 1 (leave 0 for new item)
+    for (var i = 0; i < items.length; i++) {
+      items[i]['index'] = i + 1;
     }
   }
 
@@ -230,18 +121,14 @@ class UserService extends ChangeNotifier {
         return true;
       }
 
-      // Find max index to append safely without squeeze logic for now
-      int maxIndex = -1;
-      for (var item in _shelfCache) {
-        final idx = item['index'] as int? ?? -1;
-        if (idx > maxIndex) maxIndex = idx;
-      }
+      // Re-index existing items to make room at index 0
+      _reIndexItems();
 
-      // Create new shelf item (like reference's addToShelf)
+      // Create new shelf item at the top (index 0)
       final newItem = {
         'type': 'BOOK',
         'id': bookId,
-        'index': maxIndex + 1, // Append to end
+        'index': 0, // Insert at top
         'parents': <String>[],
         'updateAt': DateTime.now().toIso8601String(),
       };

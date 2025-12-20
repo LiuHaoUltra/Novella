@@ -10,10 +10,10 @@ class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
 
   @override
-  State<HistoryPage> createState() => _HistoryPageState();
+  State<HistoryPage> createState() => HistoryPageState();
 }
 
-class _HistoryPageState extends State<HistoryPage> {
+class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
   final _logger = Logger('HistoryPage');
   final _userService = UserService();
   final _bookService = BookService();
@@ -25,7 +25,27 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchHistory();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Refresh history when app comes back to foreground
+    if (state == AppLifecycleState.resumed && mounted) {
+      _fetchHistory(force: true);
+    }
+  }
+
+  /// Public method to refresh history from outside
+  void refresh() {
+    _fetchHistory(force: true);
   }
 
   Future<void> _fetchHistory({bool force = false}) async {
