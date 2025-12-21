@@ -10,6 +10,15 @@
 
 基于 Flutter + Rust FFI 构建，为您提供流畅、纯净的阅读体验。
 
+<br/>
+
+<div align="center">
+    <img src="assets/screenshots_1.PNG" width="23%" />
+    <img src="assets/screenshots_2.PNG" width="23%" />
+    <img src="assets/screenshots_3.PNG" width="23%" />
+    <img src="assets/screenshots_4.PNG" width="23%" />
+</div>
+
 </div>
 
 ## ✨ 核心特性
