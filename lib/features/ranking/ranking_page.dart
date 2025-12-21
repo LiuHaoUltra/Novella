@@ -19,16 +19,20 @@ class _RankingPageState extends ConsumerState<RankingPage>
     with SingleTickerProviderStateMixin {
   final _logger = Logger('RankingPage');
   final _bookService = BookService();
+  final _scrollController = ScrollController();
 
   late TabController _tabController;
   final Map<String, List<Book>> _cache = {};
+  final Map<String, int> _displayedCount = {};
   bool _loading = true;
+  bool _loadingMore = false;
 
   static const _tabs = [
     ('daily', '日榜', 1),
     ('weekly', '周榜', 7),
     ('monthly', '月榜', 31),
   ];
+  static const int _pageSize = 24;
 
   @override
   void initState() {
@@ -40,6 +44,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
       initialIndex: initialIndex >= 0 ? initialIndex : 1,
     );
     _tabController.addListener(_onTabChange);
+    _scrollController.addListener(_onScroll);
     _fetchRanking();
   }
 
@@ -47,12 +52,20 @@ class _RankingPageState extends ConsumerState<RankingPage>
   void dispose() {
     _tabController.removeListener(_onTabChange);
     _tabController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _onTabChange() {
     if (!_tabController.indexIsChanging) {
       _fetchRanking();
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
     }
   }
 
@@ -70,6 +83,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
     try {
       final books = await _bookService.getRank(_currentDays);
       _cache[_currentType] = books;
+      _displayedCount[_currentType] = _pageSize.clamp(0, books.length);
       if (mounted) {
         setState(() => _loading = false);
       }
@@ -84,11 +98,34 @@ class _RankingPageState extends ConsumerState<RankingPage>
     }
   }
 
+  void _loadMore() {
+    final allBooks = _cache[_currentType] ?? [];
+    final currentCount = _displayedCount[_currentType] ?? 0;
+
+    if (_loadingMore || currentCount >= allBooks.length) return;
+
+    setState(() => _loadingMore = true);
+
+    // Simulate a brief delay for smooth UX
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          final newCount = (currentCount + _pageSize).clamp(0, allBooks.length);
+          _displayedCount[_currentType] = newCount;
+          _loadingMore = false;
+        });
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final books = _cache[_currentType] ?? [];
+    final allBooks = _cache[_currentType] ?? [];
+    final displayCount = _displayedCount[_currentType] ?? 0;
+    final displayBooks = allBooks.take(displayCount).toList();
+    final hasMore = displayCount < allBooks.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -103,7 +140,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
         child:
             _loading
                 ? const Center(child: CircularProgressIndicator())
-                : books.isEmpty
+                : allBooks.isEmpty
                 ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -124,6 +161,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
                   ),
                 )
                 : GridView.builder(
+                  controller: _scrollController,
                   padding: const EdgeInsets.all(12),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
@@ -131,9 +169,13 @@ class _RankingPageState extends ConsumerState<RankingPage>
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 12,
                   ),
-                  itemCount: books.length,
+                  itemCount:
+                      displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
                   itemBuilder: (context, index) {
-                    final book = books[index];
+                    if (index >= displayBooks.length) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final book = displayBooks[index];
                     return _buildBookCard(context, book, index + 1);
                   },
                 ),

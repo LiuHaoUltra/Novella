@@ -20,6 +20,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _bookService = BookService();
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
+  final _scrollController = ScrollController();
 
   // State
   List<String> _history = [];
@@ -27,13 +28,16 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   int _currentPage = 1;
   int _totalPages = 0;
   bool _loading = false;
+  bool _loadingMore = false;
   bool _hasSearched = false;
   String? _pendingDeleteItem;
+  String _lastKeyword = '';
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _scrollController.addListener(_onScroll);
     // Auto focus search field
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -44,7 +48,17 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void dispose() {
     _searchController.dispose();
     _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      if (!_loading && !_loadingMore && _currentPage < _totalPages) {
+        _loadMore();
+      }
+    }
   }
 
   Future<void> _loadHistory() async {
@@ -110,23 +124,30 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
   }
 
-  Future<void> _search({int page = 1}) async {
+  Future<void> _search() async {
     final keyword = _searchController.text.trim();
     if (keyword.isEmpty) return;
 
+    // Dismiss keyboard
+    FocusScope.of(context).unfocus();
+
     _addToHistory(keyword);
+    _lastKeyword = keyword;
 
     setState(() {
       _loading = true;
       _hasSearched = true;
+      _results = [];
+      _currentPage = 1;
+      _totalPages = 0;
     });
 
     try {
       final settings = ref.read(settingsProvider);
       final result = await _bookService.searchBooks(
         keyword,
-        page: page,
-        size: 9,
+        page: 1,
+        size: 24,
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
       );
@@ -149,6 +170,37 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
   }
 
+  Future<void> _loadMore() async {
+    if (_lastKeyword.isEmpty) return;
+
+    setState(() => _loadingMore = true);
+
+    try {
+      final settings = ref.read(settingsProvider);
+      final nextPage = _currentPage + 1;
+      final result = await _bookService.searchBooks(
+        _lastKeyword,
+        page: nextPage,
+        size: 24,
+        ignoreJapanese: settings.ignoreJapanese,
+        ignoreAI: settings.ignoreAI,
+      );
+      if (mounted) {
+        setState(() {
+          _results.addAll(result.books);
+          _currentPage = nextPage;
+          _totalPages = result.totalPages;
+          _loadingMore = false;
+        });
+      }
+    } catch (e) {
+      _logger.severe('Load more failed: $e');
+      if (mounted) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
+
   void _onHistoryTap(String keyword) {
     // Cancel any pending delete first
     if (_pendingDeleteItem != null && _pendingDeleteItem != keyword) {
@@ -157,6 +209,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       });
       return;
     }
+    // Dismiss keyboard before searching
+    FocusScope.of(context).unfocus();
     _searchController.text = keyword;
     _search();
   }
@@ -180,6 +234,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           decoration: InputDecoration(
             hintText: '搜索书籍...',
             border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 15),
             suffixIcon: IconButton(
               icon: const Icon(Icons.search),
               onPressed: () => _search(),
@@ -314,67 +369,23 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       );
     }
 
-    return Column(
-      children: [
-        // Pagination controls (only show if more than 1 page)
-        if (_totalPages > 1)
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  onPressed:
-                      _currentPage > 1
-                          ? () => _search(page: _currentPage - 1)
-                          : null,
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$_currentPage / $_totalPages',
-                    style: textTheme.labelLarge?.copyWith(
-                      color: colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed:
-                      _currentPage < _totalPages
-                          ? () => _search(page: _currentPage + 1)
-                          : null,
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
-          ),
-
-        // Results grid
-        Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.58,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: _results.length,
-            itemBuilder: (context, index) {
-              final book = _results[index];
-              return _buildBookCard(context, book);
-            },
-          ),
-        ),
-      ],
+    return GridView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.58,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: _results.length + (_loadingMore ? 3 : 0),
+      itemBuilder: (context, index) {
+        if (index >= _results.length) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final book = _results[index];
+        return _buildBookCard(context, book);
+      },
     );
   }
 

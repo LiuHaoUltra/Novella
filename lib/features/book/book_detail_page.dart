@@ -302,16 +302,22 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     _loadBookInfo();
     // Delay color extraction to avoid lag during page transition
-    // Use SchedulerBinding to ensure we wait for frame rendering
+    // Hero animation ~400ms + safety margin = 550ms, then wait for 2 frames
     if (widget.initialCoverUrl != null && widget.initialCoverUrl!.isNotEmpty) {
-      // Wait for page transition to complete (reduced for faster feedback)
-      // Then schedule after next frame to avoid jank
-      Future.delayed(const Duration(milliseconds: 300), () {
+      // Wait 550ms for Hero animation to complete, then use double PostFrameCallback
+      // to ensure we don't interfere with any remaining layout/paint operations
+      Future.delayed(const Duration(milliseconds: 550), () {
         if (mounted && !_colorsExtracted) {
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_colorsExtracted) {
-              final isDark = Theme.of(context).brightness == Brightness.dark;
-              _extractColors(widget.initialCoverUrl!, isDark);
+              // Extra frame callback for additional safety during complex layouts
+              SchedulerBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_colorsExtracted) {
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
+                  _extractColors(widget.initialCoverUrl!, isDark);
+                }
+              });
             }
           });
         }
@@ -400,8 +406,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       // Extract colors from cover image
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         CachedNetworkImageProvider(coverUrl),
-        size: const Size(24, 24), // Small for fast extraction
-        maximumColorCount: 2, // Only need top 2 colors
+        size: const Size(50, 70), // Match cover aspect ratio (5:7)
+        maximumColorCount: 3, // Optimal color count for palette
       );
 
       if (!mounted) return;
@@ -1347,7 +1353,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
                             child:
-                                _coverLoadFailed || coverUrl.isEmpty
+                                coverUrl.isEmpty
                                     ? Container(
                                       color: const Color(0xFF3A3A3A),
                                       child: const Center(
@@ -1396,15 +1402,17 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              book.author,
-                              style: Theme.of(
-                                context,
-                              ).textTheme.bodyMedium?.copyWith(
-                                color: colorScheme.onSurfaceVariant,
+                            if (book.author.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                book.author,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
