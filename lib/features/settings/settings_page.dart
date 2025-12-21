@@ -4,6 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
 import 'package:novella/features/settings/source_code_page.dart';
+import 'package:novella/features/book/book_detail_page.dart'
+    show BookDetailPageState;
+import 'package:novella/data/services/book_info_cache_service.dart';
 import 'dart:io' show Platform;
 
 /// Settings state model
@@ -21,6 +24,7 @@ class AppSettings {
   final bool ignoreAI;
   final List<String> homeModuleOrder;
   final List<String> enabledHomeModules;
+  final bool bookDetailCacheEnabled;
 
   static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
   static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
@@ -39,6 +43,7 @@ class AppSettings {
     this.ignoreAI = false,
     this.homeModuleOrder = defaultModuleOrder,
     this.enabledHomeModules = defaultEnabledModules,
+    this.bookDetailCacheEnabled = true,
   });
 
   AppSettings copyWith({
@@ -55,6 +60,7 @@ class AppSettings {
     bool? ignoreAI,
     List<String>? homeModuleOrder,
     List<String>? enabledHomeModules,
+    bool? bookDetailCacheEnabled,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -70,6 +76,8 @@ class AppSettings {
       ignoreAI: ignoreAI ?? this.ignoreAI,
       homeModuleOrder: homeModuleOrder ?? this.homeModuleOrder,
       enabledHomeModules: enabledHomeModules ?? this.enabledHomeModules,
+      bookDetailCacheEnabled:
+          bookDetailCacheEnabled ?? this.bookDetailCacheEnabled,
     );
   }
 
@@ -111,6 +119,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
         prefs.getStringList('setting_enabledHomeModules') ??
             AppSettings.defaultEnabledModules,
       ),
+      bookDetailCacheEnabled:
+          prefs.getBool('setting_bookDetailCacheEnabled') ?? true,
     );
   }
 
@@ -132,6 +142,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       'setting_enabledHomeModules',
       state.enabledHomeModules,
     );
+    await prefs.setBool(
+      'setting_bookDetailCacheEnabled',
+      state.bookDetailCacheEnabled,
+    );
   }
 
   void setFontSize(double size) {
@@ -142,6 +156,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setTheme(String theme) {
     state = state.copyWith(theme: theme);
     _save();
+    // Clear book detail page caches to force re-extraction for new theme
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
   }
 
   void setConvertType(String type) {
@@ -196,6 +213,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setEnabledHomeModules(List<String> modules) {
     state = state.copyWith(enabledHomeModules: modules);
+    _save();
+  }
+
+  void setBookDetailCacheEnabled(bool value) {
+    state = state.copyWith(bookDetailCacheEnabled: value);
     _save();
   }
 
@@ -453,6 +475,15 @@ class SettingsPage extends ConsumerWidget {
 
             // Cache Management Section
             _buildSectionHeader(context, '缓存'),
+
+            // Book Detail Page Cache
+            SwitchListTile(
+              secondary: const Icon(Icons.menu_book),
+              title: const Text('详情页缓存'),
+              subtitle: const Text('缓存访问过的书籍详情，仅限单次会话'),
+              value: settings.bookDetailCacheEnabled,
+              onChanged: (value) => notifier.setBookDetailCacheEnabled(value),
+            ),
 
             // Font Cache Enable Switch
             SwitchListTile(

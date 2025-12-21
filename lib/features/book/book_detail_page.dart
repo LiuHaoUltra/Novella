@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/data/services/book_info_cache_service.dart';
 import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
@@ -12,6 +13,75 @@ import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:palette_generator/palette_generator.dart';
+
+/// Shimmer loading effect widget
+class ShimmerBox extends StatefulWidget {
+  final double width;
+  final double height;
+  final double borderRadius;
+
+  const ShimmerBox({
+    super.key,
+    required this.width,
+    required this.height,
+    this.borderRadius = 4,
+  });
+
+  @override
+  State<ShimmerBox> createState() => _ShimmerBoxState();
+}
+
+class _ShimmerBoxState extends State<ShimmerBox>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final baseColor =
+        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+    final highlightColor =
+        isDark ? const Color(0xFF3A3A3A) : const Color(0xFFF5F5F5);
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.borderRadius),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [baseColor, highlightColor, baseColor],
+              stops: [
+                (_controller.value - 0.3).clamp(0.0, 1.0),
+                _controller.value,
+                (_controller.value + 0.3).clamp(0.0, 1.0),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 /// Detailed book information response
 class BookInfo {
@@ -141,15 +211,16 @@ class BookDetailPage extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<BookDetailPage> createState() => _BookDetailPageState();
+  ConsumerState<BookDetailPage> createState() => BookDetailPageState();
 }
 
-class _BookDetailPageState extends ConsumerState<BookDetailPage> {
+class BookDetailPageState extends ConsumerState<BookDetailPage> {
   final _logger = Logger('BookDetailPage');
   final _bookService = BookService();
   final _progressService = ReadingProgressService();
   final _userService = UserService();
   final _bookMarkService = BookMarkService();
+  final _cacheService = BookInfoCacheService();
 
   // Local book mark status
   BookMarkStatus _currentMark = BookMarkStatus.none;
@@ -159,6 +230,15 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   static final Map<String, List<Color>> _colorCache = {};
   // Static cache for ColorScheme (shared across all instances)
   static final Map<String, ColorScheme> _schemeCache = {};
+
+  // Track current brightness to detect theme changes
+  Brightness? _currentBrightness;
+
+  /// Clear all color caches (call when theme changes)
+  static void clearColorCache() {
+    _colorCache.clear();
+    _schemeCache.clear();
+  }
 
   BookInfo? _bookInfo;
   ReadPosition? _readPosition;
@@ -175,16 +255,58 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   // Dynamic ColorScheme based on cover image
   ColorScheme? _dynamicColorScheme;
 
+  /// Format DateTime to relative time string (dayjs-compatible thresholds)
+  /// @see https://day.js.org/docs/en/display/from-now#list-of-breakdown-range
+  String _formatRelativeTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+    final seconds = diff.inSeconds;
+    final minutes = diff.inMinutes;
+    final hours = diff.inHours;
+    final days = diff.inDays;
+
+    if (seconds < 45) {
+      return '刚刚';
+    } else if (seconds < 90) {
+      return '1分钟前';
+    } else if (minutes < 45) {
+      return '$minutes分钟前';
+    } else if (minutes < 90) {
+      return '1小时前';
+    } else if (hours < 22) {
+      return '$hours小时前';
+    } else if (hours < 36) {
+      return '1天前';
+    } else if (days < 26) {
+      final roundedDays = (hours / 24).round(); // Use rounding like dayjs
+      return '$roundedDays天前';
+    } else if (days < 46) {
+      return '1个月前';
+    } else if (days < 320) {
+      final months = (days / 30.4).round(); // Average days per month
+      return '$months个月前';
+    } else if (days < 548) {
+      return '1年前';
+    } else {
+      final years = (days / 365.25).round(); // Account for leap years
+      return '$years年前';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    // Try to restore cached colors immediately to prevent flash
+    _tryRestoreCachedColors();
+
     _loadBookInfo();
     // Delay color extraction to avoid lag during page transition
     // Use SchedulerBinding to ensure we wait for frame rendering
     if (widget.initialCoverUrl != null && widget.initialCoverUrl!.isNotEmpty) {
-      // Wait for page transition to complete (typically ~300-400ms)
+      // Wait for page transition to complete (reduced for faster feedback)
       // Then schedule after next frame to avoid jank
-      Future.delayed(const Duration(milliseconds: 500), () {
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted && !_colorsExtracted) {
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_colorsExtracted) {
@@ -197,13 +319,53 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final brightness = Theme.of(context).brightness;
+    // Detect theme change and re-extract colors
+    if (_currentBrightness != null && _currentBrightness != brightness) {
+      _logger.info(
+        'Theme changed from $_currentBrightness to $brightness, re-extracting colors',
+      );
+      // Reset color extraction state
+      _gradientColors = null;
+      _dynamicColorScheme = null;
+      _colorsExtracted = false;
+      // Re-extract colors for new theme
+      final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
+      if (coverUrl != null && coverUrl.isNotEmpty) {
+        _extractColors(coverUrl, brightness == Brightness.dark);
+      }
+    }
+    _currentBrightness = brightness;
+  }
+
+  /// Try to restore cached colors immediately (synchronously) to prevent flash
+  void _tryRestoreCachedColors() {
+    // We need to check both light and dark theme cache keys
+    // Since we don't have context here yet, try to get from platform brightness
+    final brightness =
+        WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    final isDark = brightness == Brightness.dark;
+    final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
+
+    if (_colorCache.containsKey(cacheKey) &&
+        _schemeCache.containsKey(cacheKey)) {
+      _gradientColors = _colorCache[cacheKey]!;
+      _dynamicColorScheme = _schemeCache[cacheKey]!;
+      _colorsExtracted = true;
+    }
+  }
+
   /// Adjust color based on theme brightness for premium feel
   Color _adjustColorForTheme(Color color, bool isDark) {
     final hsl = HSLColor.fromColor(color);
     if (isDark) {
-      // Dark mode: reduce lightness, increase saturation slightly
+      // Dark mode: significantly reduce lightness for darker backgrounds
+      // Range 0.05-0.25 ensures colors are dark but still distinguishable
       return hsl
-          .withLightness((hsl.lightness * 0.6).clamp(0.1, 0.4))
+          .withLightness((hsl.lightness * 0.4).clamp(0.05, 0.25))
           .withSaturation((hsl.saturation * 1.1).clamp(0.0, 1.0))
           .toColor();
     } else {
@@ -235,66 +397,65 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
 
     try {
+      // Extract colors from cover image
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         CachedNetworkImageProvider(coverUrl),
-        size: const Size(24, 24), // Very small for fast extraction
-        maximumColorCount: 3,
+        size: const Size(24, 24), // Small for fast extraction
+        maximumColorCount: 2, // Only need top 2 colors
       );
 
       if (!mounted) return;
 
-      // Get colors for Apple Music-style gradient
-      final rawColors = <Color>[];
-
+      // Get only top 2 colors for smoother gradient (avoids harsh lines)
       // Primary: dominant first (by area coverage), fallback to vibrant
       final primary =
           paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color;
 
-      // Secondary: muted or dark muted
+      // Secondary: muted or dark muted (fallback to light muted)
       final secondary =
           paletteGenerator.mutedColor?.color ??
-          paletteGenerator.darkMutedColor?.color;
-
-      // Tertiary: dark vibrant or light muted
-      final tertiary =
-          paletteGenerator.darkVibrantColor?.color ??
+          paletteGenerator.darkMutedColor?.color ??
           paletteGenerator.lightMutedColor?.color;
 
-      if (primary != null) rawColors.add(primary);
-      if (secondary != null) rawColors.add(secondary);
-      if (tertiary != null) rawColors.add(tertiary);
+      // Build gradient colors: primary -> middle (interpolated) -> secondary
+      Color color1;
+      Color color2;
 
-      // Ensure we have at least 2 colors for gradient
-      if (rawColors.length < 2) {
-        if (rawColors.isNotEmpty) {
-          // Add a darkened/lightened version
-          rawColors.add(
-            Color.lerp(
-              rawColors.first,
-              isDark ? Colors.black : Colors.white,
-              0.4,
-            )!,
-          );
-        } else {
-          setState(() => _coverLoadFailed = true);
-          return;
-        }
+      if (primary != null && secondary != null) {
+        color1 = primary;
+        color2 = secondary;
+      } else if (primary != null) {
+        color1 = primary;
+        // Generate second color by darkening/lightening
+        color2 =
+            Color.lerp(primary, isDark ? Colors.black : Colors.white, 0.4)!;
+      } else if (secondary != null) {
+        color1 = secondary;
+        color2 =
+            Color.lerp(secondary, isDark ? Colors.black : Colors.white, 0.4)!;
+      } else {
+        setState(() => _coverLoadFailed = true);
+        return;
       }
 
       // Adjust colors based on theme
-      final adjustedColors =
-          rawColors.map((c) => _adjustColorForTheme(c, isDark)).toList();
+      color1 = _adjustColorForTheme(color1, isDark);
+      color2 = _adjustColorForTheme(color2, isDark);
+
+      // Generate middle color by interpolation for smoother gradient
+      final middleColor = Color.lerp(color1, color2, 0.5)!;
+
+      // Final gradient: [color1, middle, color2] for smooth 3-stop gradient
+      final adjustedColors = [color1, middleColor, color2];
 
       // Cache the adjusted colors with theme-specific key
       _colorCache[cacheKey] = List.from(adjustedColors);
 
-      // Generate dynamic ColorScheme using DOMINANT color (by area coverage)
-      // This ensures the main color of the cover is used for theming
-      final seedColor =
-          paletteGenerator.dominantColor?.color ??
-          paletteGenerator.vibrantColor?.color ??
-          rawColors.first;
+      // Generate dynamic ColorScheme using the SAME primary color as gradient
+      // Use color1 (already adjusted for theme) to ensure consistency
+      // between background gradient and component colors
+      final seedColor = color1;
 
       final dynamicScheme = ColorScheme.fromSeed(
         seedColor: seedColor,
@@ -317,7 +478,32 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  Future<void> _loadBookInfo() async {
+  Future<void> _loadBookInfo({bool forceRefresh = false}) async {
+    final settings = ref.read(settingsProvider);
+
+    // Try to use cache if enabled and not forcing refresh
+    if (!forceRefresh && settings.bookDetailCacheEnabled) {
+      final cached = _cacheService.get(widget.bookId);
+      if (cached != null) {
+        // Use cached data and only refresh reading progress
+        _bookInfo = cached;
+        await _refreshReadingProgress();
+        if (mounted && _loading) {
+          setState(() => _loading = false);
+        }
+        // Extract colors if needed
+        if (mounted && !_colorsExtracted && _gradientColors == null) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          _extractColors(cached.cover, isDark);
+        }
+
+        // Fetch fresh data from server in background to sync reading progress
+        // This ensures multi-device sync works even when using cache
+        _fetchServerDataInBackground();
+        return;
+      }
+    }
+
     setState(() {
       _loading = true;
       _error = null;
@@ -391,6 +577,10 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         if (!_colorsExtracted && _gradientColors == null) {
           _extractColors(info.cover, isDark);
         }
+        // Cache the book info if caching is enabled
+        if (settings.bookDetailCacheEnabled) {
+          _cacheService.set(widget.bookId, info);
+        }
       }
     } catch (e) {
       _logger.severe('Failed to load book info: $e');
@@ -400,6 +590,133 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           _loading = false;
         });
       }
+    }
+  }
+
+  /// Refresh only reading progress and related state (no network request for book info)
+  Future<void> _refreshReadingProgress() async {
+    try {
+      // Get local reading position
+      final position = await _progressService.getLocalScrollPosition(
+        widget.bookId,
+      );
+      // Get local book mark status
+      final mark = await _bookMarkService.getBookMark(widget.bookId);
+      // Check shelf status
+      await _userService.ensureInitialized();
+
+      if (mounted) {
+        setState(() {
+          _readPosition = position;
+          _isInShelf = _userService.isInShelf(widget.bookId);
+          _currentMark = mark;
+        });
+      }
+    } catch (e) {
+      _logger.warning('Failed to refresh reading progress: $e');
+    }
+  }
+
+  /// Fetch fresh data from server in background and selectively update changes
+  /// Compares all book detail elements and only updates what has changed
+  Future<void> _fetchServerDataInBackground() async {
+    try {
+      final info = await _bookService.getBookInfo(widget.bookId);
+
+      if (!mounted || _bookInfo == null) return;
+
+      final cached = _bookInfo!;
+      bool needsUpdate = false;
+
+      // Compare book info fields
+      final bool infoChanged =
+          cached.title != info.title ||
+          cached.author != info.author ||
+          cached.introduction != info.introduction ||
+          cached.cover != info.cover ||
+          cached.favorite != info.favorite ||
+          cached.views != info.views ||
+          cached.lastUpdatedAt != info.lastUpdatedAt ||
+          cached.lastUpdatedChapter != info.lastUpdatedChapter ||
+          cached.chapters.length != info.chapters.length;
+
+      if (infoChanged) {
+        _logger.info('Background sync: book info changed, updating UI');
+        needsUpdate = true;
+      }
+
+      // Extract server reading position
+      ReadPosition? serverPosition;
+      if (info.serverReadPosition != null &&
+          info.serverReadPosition!.chapterId != null) {
+        final serverChapterId = info.serverReadPosition!.chapterId!;
+        final positionStr = info.serverReadPosition!.position ?? '';
+
+        int? sortNum;
+        double scrollPosition = 0.0;
+
+        for (int i = 0; i < info.chapters.length; i++) {
+          if (info.chapters[i].id == serverChapterId) {
+            sortNum = i + 1;
+            break;
+          }
+        }
+
+        if (positionStr.startsWith('scroll:')) {
+          scrollPosition = double.tryParse(positionStr.substring(7)) ?? 0.0;
+        }
+
+        if (sortNum != null) {
+          serverPosition = ReadPosition(
+            bookId: widget.bookId,
+            chapterId: serverChapterId,
+            sortNum: sortNum,
+            scrollPosition: scrollPosition,
+          );
+        }
+      }
+
+      // Compare reading position (only chapter number)
+      bool positionChanged = false;
+      if (serverPosition != null) {
+        final currentPos = _readPosition;
+        positionChanged =
+            currentPos == null || serverPosition.sortNum > currentPos.sortNum;
+
+        if (positionChanged) {
+          _logger.info(
+            'Background sync: reading position updated to ch${serverPosition.sortNum}',
+          );
+          // Save to local storage
+          await _progressService.saveLocalScrollPosition(
+            bookId: widget.bookId,
+            chapterId: serverPosition.chapterId,
+            sortNum: serverPosition.sortNum,
+            scrollPosition: serverPosition.scrollPosition,
+          );
+        }
+      }
+
+      // Apply updates if anything changed
+      if (mounted && (needsUpdate || positionChanged)) {
+        setState(() {
+          if (needsUpdate) {
+            _bookInfo = info;
+          }
+          if (positionChanged && serverPosition != null) {
+            _readPosition = serverPosition;
+          }
+        });
+      }
+
+      // Update cache with fresh data
+      final settings = ref.read(settingsProvider);
+      if (settings.bookDetailCacheEnabled) {
+        _cacheService.set(widget.bookId, info);
+      }
+    } catch (e) {
+      _logger.warning('Background sync failed: $e');
+      // Silently ignore errors - we already have cached data
     }
   }
 
@@ -423,9 +740,9 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           ),
         )
         .then((_) {
-          // Refresh reading position when returning from reader
+          // Only refresh reading position when returning from reader (not full reload)
           if (mounted) {
-            _loadBookInfo();
+            _refreshReadingProgress();
           }
         });
   }
@@ -615,9 +932,17 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Use dynamic ColorScheme if available, otherwise fall back to theme default
+    // Check OLED black mode setting
+    final settings = ref.watch(settingsProvider);
+    final isOled = settings.oledBlack;
+
+    // Use dynamic ColorScheme if available AND not in OLED mode
+    // OLED mode uses system default colors for pure black experience
     final baseColorScheme = Theme.of(context).colorScheme;
-    final colorScheme = _dynamicColorScheme ?? baseColorScheme;
+    final colorScheme =
+        (isOled || _dynamicColorScheme == null)
+            ? baseColorScheme
+            : _dynamicColorScheme!;
 
     // Show preview with initial data while loading
     if (_loading &&
@@ -626,6 +951,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         context,
         colorScheme,
         _buildLoadingPreview(colorScheme),
+        isOled: isOled,
       );
     }
 
@@ -637,23 +963,36 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           : _error != null
           ? _buildErrorView()
           : _buildContent(colorScheme),
+      isOled: isOled,
     );
   }
 
   /// Wrap content with animated Theme override when dynamic ColorScheme is available
-  /// Uses AnimatedTheme for smooth color transitions
+  /// Uses AnimatedTheme for smooth color transitions (only when extracting colors)
+  /// Skips animation if colors were restored from cache to prevent flash
+  /// Skips dynamic ColorScheme entirely when OLED mode is enabled
   Widget _buildThemedScaffold(
     BuildContext context,
     ColorScheme colorScheme,
-    Widget body,
-  ) {
-    // Always use AnimatedTheme for smooth transitions when colors change
+    Widget body, {
+    bool isOled = false,
+  }) {
+    // Skip animation if colors were already extracted (from cache)
+    // This prevents the flash when navigating to a cached book
+    final shouldAnimate = !_colorsExtracted || _dynamicColorScheme == null;
+
+    // In OLED mode, always use system theme (no dynamic colors)
+    final effectiveColorScheme =
+        isOled
+            ? Theme.of(context).colorScheme
+            : (_dynamicColorScheme ?? Theme.of(context).colorScheme);
+
     return AnimatedTheme(
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeOutCubic,
-      data: Theme.of(context).copyWith(
-        colorScheme: _dynamicColorScheme ?? Theme.of(context).colorScheme,
-      ),
+      // Use longer duration (600ms) for smoother, more elegant fade-in
+      duration:
+          shouldAnimate ? const Duration(milliseconds: 600) : Duration.zero,
+      curve: Curves.easeInOutCubic,
+      data: Theme.of(context).copyWith(colorScheme: effectiveColorScheme),
       child: Scaffold(body: body),
     );
   }
@@ -796,12 +1135,8 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             const SizedBox(height: 8),
-                            // Loading indicator for details
-                            const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
+                            // Shimmer skeleton for loading author
+                            ShimmerBox(width: 80, height: 16, borderRadius: 4),
                           ],
                         ),
                       ),
@@ -812,9 +1147,45 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
             ),
           ),
         ),
-        // Loading placeholder for content
-        const SliverFillRemaining(
-          child: Center(child: CircularProgressIndicator()),
+        // Shimmer skeleton for content - simplified layout
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              // Meta chips skeleton: height=26, borderRadius=8
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ShimmerBox(width: 55, height: 26, borderRadius: 8),
+                  ShimmerBox(width: 70, height: 26, borderRadius: 8),
+                  ShimmerBox(width: 55, height: 26, borderRadius: 8),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Action buttons: bookmark 56x56, read button height=56
+              Row(
+                children: [
+                  ShimmerBox(width: 56, height: 56, borderRadius: 16),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ShimmerBox(
+                      width: double.infinity,
+                      height: 56,
+                      borderRadius: 16,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Introduction: single block for entire section
+              ShimmerBox(width: double.infinity, height: 80, borderRadius: 16),
+              const SizedBox(height: 24),
+              // Unified block for Update Info + Chapter Header + Chapter List
+              // Matches the visual weight of the lower section
+              ShimmerBox(width: double.infinity, height: 300, borderRadius: 16),
+            ]),
+          ),
         ),
       ],
     );
@@ -1242,34 +1613,56 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
                 ],
 
                 // Update info - subtle
-                if (book.lastUpdatedChapter != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withAlpha(128),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.update_outlined,
-                          size: 18,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '最新: ${book.lastUpdatedChapter}',
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                              fontSize: 13,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                ...[
+                  Builder(
+                    builder: (context) {
+                      final relativeTime = _formatRelativeTime(
+                        book.lastUpdatedAt,
+                      );
+                      // Use last chapter from chapters list for accuracy
+                      final lastChapterTitle =
+                          book.chapters.isNotEmpty
+                              ? book.chapters.last.title
+                              : null;
+                      final hasChapter =
+                          lastChapterTitle != null &&
+                          lastChapterTitle.isNotEmpty;
+                      final displayText =
+                          hasChapter
+                              ? '最新: $relativeTime - $lastChapterTitle'
+                              : '最新: $relativeTime';
+
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHighest.withAlpha(
+                            128,
                           ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
-                    ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.update_outlined,
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                displayText,
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
                 ],
