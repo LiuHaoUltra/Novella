@@ -17,22 +17,35 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
   final _logger = Logger('HistoryPage');
   final _userService = UserService();
   final _bookService = BookService();
+  final _scrollController = ScrollController();
 
   List<Book> _books = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  int _displayedCount = 0;
+  static const int _pageSize = 24;
   String? _error;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_onScroll);
     _fetchHistory();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreItems();
+    }
   }
 
   @override
@@ -84,6 +97,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _books = sortedBooks;
+          _displayedCount = _pageSize.clamp(0, sortedBooks.length);
           _loading = false;
           _error = null;
         });
@@ -97,6 +111,24 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
         });
       }
     }
+  }
+
+  void _loadMoreItems() {
+    if (_loadingMore || _displayedCount >= _books.length) return;
+
+    setState(() => _loadingMore = true);
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          _displayedCount = (_displayedCount + _pageSize).clamp(
+            0,
+            _books.length,
+          );
+          _loadingMore = false;
+        });
+      }
+    });
   }
 
   Future<void> _clearHistory() async {
@@ -249,7 +281,11 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
     }
 
     // Grid of books
+    final displayBooks = _books.take(_displayedCount).toList();
+    final hasMore = _displayedCount < _books.length;
+
     return GridView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
@@ -257,8 +293,13 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
         crossAxisSpacing: 10,
         mainAxisSpacing: 12,
       ),
-      itemCount: _books.length,
-      itemBuilder: (context, index) => _buildBookItem(_books[index]),
+      itemCount: displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
+      itemBuilder: (context, index) {
+        if (index >= displayBooks.length) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return _buildBookItem(displayBooks[index]);
+      },
     );
   }
 

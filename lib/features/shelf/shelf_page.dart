@@ -19,12 +19,16 @@ class ShelfPageState extends State<ShelfPage> {
   final _bookService = BookService();
   final _userService = UserService();
   final _bookMarkService = BookMarkService();
+  final _scrollController = ScrollController();
 
   // State
   List<ShelfItem> _items = [];
   final Map<int, Book> _bookDetails = {};
   bool _loading = true;
+  bool _loadingMore = false;
   DateTime? _lastRefreshTime;
+  int _displayedCount = 0;
+  static const int _pageSize = 24;
 
   // Filter state - 0: default (all), 1: toRead, 2: reading, 3: finished
   int _selectedFilter = 0;
@@ -34,13 +38,22 @@ class ShelfPageState extends State<ShelfPage> {
   void initState() {
     super.initState();
     _userService.addListener(_onShelfChanged);
+    _scrollController.addListener(_onScroll);
     _fetchShelf();
   }
 
   @override
   void dispose() {
     _userService.removeListener(_onShelfChanged);
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreItems();
+    }
   }
 
   void _onShelfChanged() {
@@ -120,10 +133,35 @@ class ShelfPageState extends State<ShelfPage> {
     if (mounted) {
       setState(() {
         _items = bookItems;
+        _displayedCount = _pageSize.clamp(0, bookItems.length);
         _loading = false;
         _lastRefreshTime = DateTime.now();
       });
     }
+  }
+
+  void _loadMoreItems() {
+    // Compute filtered items to get correct count
+    final filteredItems =
+        _selectedFilter == 0
+            ? _items
+            : _items.where((item) => _markedBookIds.contains(item.id)).toList();
+
+    if (_loadingMore || _displayedCount >= filteredItems.length) return;
+
+    setState(() => _loadingMore = true);
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        setState(() {
+          _displayedCount = (_displayedCount + _pageSize).clamp(
+            0,
+            filteredItems.length,
+          );
+          _loadingMore = false;
+        });
+      }
+    });
   }
 
   @override
@@ -146,17 +184,20 @@ class ShelfPageState extends State<ShelfPage> {
               child: Builder(
                 builder: (context) {
                   // Compute filtered items
-                  final displayItems =
+                  final allFilteredItems =
                       _selectedFilter == 0
                           ? _items
                           : _items
                               .where((item) => _markedBookIds.contains(item.id))
                               .toList();
+                  final displayItems =
+                      allFilteredItems.take(_displayedCount).toList();
+                  final hasMore = _displayedCount < allFilteredItems.length;
 
                   if (_loading) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  if (displayItems.isEmpty) {
+                  if (allFilteredItems.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -184,6 +225,7 @@ class ShelfPageState extends State<ShelfPage> {
                   return RefreshIndicator(
                     onRefresh: () => _fetchShelf(force: true),
                     child: GridView.builder(
+                      controller: _scrollController,
                       padding: const EdgeInsets.all(12),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
@@ -192,8 +234,15 @@ class ShelfPageState extends State<ShelfPage> {
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 12,
                           ),
-                      itemCount: displayItems.length,
+                      itemCount:
+                          displayItems.length +
+                          (hasMore && _loadingMore ? 3 : 0),
                       itemBuilder: (context, index) {
+                        if (index >= displayItems.length) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
                         final item = displayItems[index];
                         return _buildBookItem(item);
                       },
@@ -288,6 +337,7 @@ class ShelfPageState extends State<ShelfPage> {
 
     setState(() {
       _selectedFilter = filterIndex;
+      _displayedCount = _pageSize; // Reset pagination when filter changes
     });
 
     // For non-default filter, load marked book IDs from local storage
