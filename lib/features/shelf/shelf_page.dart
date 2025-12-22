@@ -427,11 +427,11 @@ class ShelfPageState extends State<ShelfPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                Hero(
-                  tag: heroTag,
-                  child: Card(
+            child: Hero(
+              tag: heroTag,
+              child: Stack(
+                children: [
+                  Card(
                     elevation: 2,
                     shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
                     clipBehavior: Clip.antiAlias,
@@ -473,18 +473,19 @@ class ShelfPageState extends State<ShelfPage> {
                                   ),
                             ),
                   ),
-                ),
-                Consumer(
-                  builder: (context, ref, _) {
-                    if (ref
-                        .watch(settingsProvider)
-                        .isBookTypeBadgeEnabled('shelf')) {
-                      return BookTypeBadge(category: book?.category);
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ],
+                  // Book type badge (inside Hero)
+                  Consumer(
+                    builder: (context, ref, _) {
+                      if (ref
+                          .watch(settingsProvider)
+                          .isBookTypeBadgeEnabled('shelf')) {
+                        return BookTypeBadge(category: book?.category);
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           SizedBox(

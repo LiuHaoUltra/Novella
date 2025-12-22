@@ -201,11 +201,11 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                Hero(
-                  tag: heroTag,
-                  child: Card(
+            child: Hero(
+              tag: heroTag,
+              child: Stack(
+                children: [
+                  Card(
                     elevation: 2,
                     shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
                     clipBehavior: Clip.antiAlias,
@@ -239,12 +239,13 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
                           ),
                     ),
                   ),
-                ),
-                if (ref
-                    .watch(settingsProvider)
-                    .isBookTypeBadgeEnabled('recent'))
-                  BookTypeBadge(category: book.category),
-              ],
+                  // Book type badge (inside Hero)
+                  if (ref
+                      .watch(settingsProvider)
+                      .isBookTypeBadgeEnabled('recent'))
+                    BookTypeBadge(category: book.category),
+                ],
+              ),
             ),
           ),
           SizedBox(

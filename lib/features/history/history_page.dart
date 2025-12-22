@@ -336,11 +336,11 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
         children: [
           // Cover
           Expanded(
-            child: Stack(
-              children: [
-                Hero(
-                  tag: heroTag,
-                  child: Card(
+            child: Hero(
+              tag: heroTag,
+              child: Stack(
+                children: [
+                  Card(
                     elevation: 2,
                     shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
                     clipBehavior: Clip.antiAlias,
@@ -385,18 +385,19 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
                               ),
                             ),
                   ),
-                ),
-                Consumer(
-                  builder: (context, ref, _) {
-                    if (ref
-                        .watch(settingsProvider)
-                        .isBookTypeBadgeEnabled('history')) {
-                      return BookTypeBadge(category: book.category);
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              ],
+                  // Book type badge (inside Hero)
+                  Consumer(
+                    builder: (context, ref, _) {
+                      if (ref
+                          .watch(settingsProvider)
+                          .isBookTypeBadgeEnabled('history')) {
+                        return BookTypeBadge(category: book.category);
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           // Title - Fixed height container to prevent cover ratio issues

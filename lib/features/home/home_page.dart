@@ -577,11 +577,11 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Stack(
-              children: [
-                Hero(
-                  tag: heroTag,
-                  child: Card(
+            child: Hero(
+              tag: heroTag,
+              child: Stack(
+                children: [
+                  Card(
                     elevation: 2,
                     shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
                     clipBehavior: Clip.antiAlias,
@@ -615,45 +615,45 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                           ),
                     ),
                   ),
-                ),
-                // Rank badge for top 3
-                if (rank <= 3 && rank > 0)
-                  Positioned(
-                    left: 4,
-                    top: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color:
-                            rank == 1
-                                ? const Color(0xFFFFD700) // Gold
-                                : rank == 2
-                                ? const Color(
-                                  0xFF78909C,
-                                ) // Silver (blue-tinted)
-                                : const Color(0xFFCD7F32), // Bronze
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '$rank',
-                        style: textTheme.labelSmall?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                  // Rank badge for top 3 (inside Hero)
+                  if (rank <= 3 && rank > 0)
+                    Positioned(
+                      left: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              rank == 1
+                                  ? const Color(0xFFFFD700) // Gold
+                                  : rank == 2
+                                  ? const Color(
+                                    0xFF78909C,
+                                  ) // Silver (blue-tinted)
+                                  : const Color(0xFFCD7F32), // Bronze
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$rank',
+                          style: textTheme.labelSmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                // Book type badge - use 'ranking' scope for rank section, 'recent' for recent section
-                if (ref
-                    .watch(settingsProvider)
-                    .isBookTypeBadgeEnabled(
-                      source == 'rank' ? 'ranking' : 'recent',
-                    ))
-                  BookTypeBadge(category: book.category),
-              ],
+                  // Book type badge (inside Hero)
+                  if (ref
+                      .watch(settingsProvider)
+                      .isBookTypeBadgeEnabled(
+                        source == 'rank' ? 'ranking' : 'recent',
+                      ))
+                    BookTypeBadge(category: book.category),
+                ],
+              ),
             ),
           ),
           SizedBox(
