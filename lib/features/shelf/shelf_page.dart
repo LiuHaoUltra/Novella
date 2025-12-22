@@ -1,11 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_type_badge.dart';
 
 class ShelfPage extends StatefulWidget {
   const ShelfPage({super.key});
@@ -424,48 +427,64 @@ class ShelfPageState extends State<ShelfPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
-              tag: heroTag,
-              child: Card(
-                elevation: 2,
-                shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                Hero(
+                  tag: heroTag,
+                  child: Card(
+                    elevation: 2,
+                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child:
+                        book == null
+                            ? Container(
+                              color: colorScheme.surfaceContainerHighest,
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            )
+                            : CachedNetworkImage(
+                              imageUrl: book.cover,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              placeholder:
+                                  (context, url) => Container(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.book_outlined,
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                              errorWidget:
+                                  (context, url, error) => Container(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.broken_image_outlined,
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                            ),
+                  ),
                 ),
-                child:
-                    book == null
-                        ? Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                        : CachedNetworkImage(
-                          imageUrl: book.cover,
-                          fit: BoxFit.cover,
-                          placeholder:
-                              (context, url) => Container(
-                                color: colorScheme.surfaceContainerHighest,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.book_outlined,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                          errorWidget:
-                              (context, url, error) => Container(
-                                color: colorScheme.surfaceContainerHighest,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                        ),
-              ),
+                Consumer(
+                  builder: (context, ref, _) {
+                    if (ref
+                        .watch(settingsProvider)
+                        .isBookTypeBadgeEnabled('shelf')) {
+                      return BookTypeBadge(category: book?.category);
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
             ),
           ),
           SizedBox(

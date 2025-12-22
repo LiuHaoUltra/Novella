@@ -22,12 +22,21 @@ class AppSettings {
   final bool cleanChapterTitle;
   final bool ignoreJapanese;
   final bool ignoreAI;
+  final bool ignoreLevel6;
   final List<String> homeModuleOrder;
   final List<String> enabledHomeModules;
   final bool bookDetailCacheEnabled;
+  final List<String> bookTypeBadgeScopes;
 
   static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
   static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
+  static const defaultBookTypeBadgeScopes = [
+    'ranking',
+    'recent',
+    'search',
+    'shelf',
+    'history',
+  ];
 
   const AppSettings({
     this.fontSize = 18.0,
@@ -41,9 +50,11 @@ class AppSettings {
     this.cleanChapterTitle = false,
     this.ignoreJapanese = false,
     this.ignoreAI = false,
+    this.ignoreLevel6 = true, // Default ON - hide Level6 books
     this.homeModuleOrder = defaultModuleOrder,
     this.enabledHomeModules = defaultEnabledModules,
     this.bookDetailCacheEnabled = true,
+    this.bookTypeBadgeScopes = defaultBookTypeBadgeScopes,
   });
 
   AppSettings copyWith({
@@ -58,9 +69,11 @@ class AppSettings {
     bool? cleanChapterTitle,
     bool? ignoreJapanese,
     bool? ignoreAI,
+    bool? ignoreLevel6,
     List<String>? homeModuleOrder,
     List<String>? enabledHomeModules,
     bool? bookDetailCacheEnabled,
+    List<String>? bookTypeBadgeScopes,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -74,16 +87,22 @@ class AppSettings {
       cleanChapterTitle: cleanChapterTitle ?? this.cleanChapterTitle,
       ignoreJapanese: ignoreJapanese ?? this.ignoreJapanese,
       ignoreAI: ignoreAI ?? this.ignoreAI,
+      ignoreLevel6: ignoreLevel6 ?? this.ignoreLevel6,
       homeModuleOrder: homeModuleOrder ?? this.homeModuleOrder,
       enabledHomeModules: enabledHomeModules ?? this.enabledHomeModules,
       bookDetailCacheEnabled:
           bookDetailCacheEnabled ?? this.bookDetailCacheEnabled,
+      bookTypeBadgeScopes: bookTypeBadgeScopes ?? this.bookTypeBadgeScopes,
     );
   }
 
   /// Check if a module is enabled
   bool isModuleEnabled(String moduleId) =>
       enabledHomeModules.contains(moduleId);
+
+  /// Check if book type badge is enabled for a scope
+  bool isBookTypeBadgeEnabled(String scope) =>
+      bookTypeBadgeScopes.contains(scope);
 }
 
 /// Settings notifier using Riverpod 3.x Notifier API
@@ -111,6 +130,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       cleanChapterTitle: prefs.getBool('setting_cleanChapterTitle') ?? false,
       ignoreJapanese: prefs.getBool('setting_ignoreJapanese') ?? false,
       ignoreAI: prefs.getBool('setting_ignoreAI') ?? false,
+      ignoreLevel6: prefs.getBool('setting_ignoreLevel6') ?? true, // Default ON
       homeModuleOrder: List<String>.from(
         prefs.getStringList('setting_homeModuleOrder') ??
             AppSettings.defaultModuleOrder,
@@ -121,6 +141,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       ),
       bookDetailCacheEnabled:
           prefs.getBool('setting_bookDetailCacheEnabled') ?? true,
+      bookTypeBadgeScopes: List<String>.from(
+        prefs.getStringList('setting_bookTypeBadgeScopes') ??
+            AppSettings.defaultBookTypeBadgeScopes,
+      ),
     );
   }
 
@@ -137,6 +161,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setBool('setting_cleanChapterTitle', state.cleanChapterTitle);
     await prefs.setBool('setting_ignoreJapanese', state.ignoreJapanese);
     await prefs.setBool('setting_ignoreAI', state.ignoreAI);
+    await prefs.setBool('setting_ignoreLevel6', state.ignoreLevel6);
     await prefs.setStringList('setting_homeModuleOrder', state.homeModuleOrder);
     await prefs.setStringList(
       'setting_enabledHomeModules',
@@ -145,6 +170,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setBool(
       'setting_bookDetailCacheEnabled',
       state.bookDetailCacheEnabled,
+    );
+    await prefs.setStringList(
+      'setting_bookTypeBadgeScopes',
+      state.bookTypeBadgeScopes,
     );
   }
 
@@ -206,6 +235,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _save();
   }
 
+  void setIgnoreLevel6(bool value) {
+    state = state.copyWith(ignoreLevel6: value);
+    _save();
+  }
+
   void setHomeModuleOrder(List<String> order) {
     state = state.copyWith(homeModuleOrder: order);
     _save();
@@ -227,6 +261,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     required List<String> enabled,
   }) {
     state = state.copyWith(homeModuleOrder: order, enabledHomeModules: enabled);
+    _save();
+  }
+
+  void setBookTypeBadgeScopes(List<String> scopes) {
+    state = state.copyWith(bookTypeBadgeScopes: scopes);
     _save();
   }
 }
@@ -404,15 +443,40 @@ class SettingsPage extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.reorder),
               title: const Text('首页管理'),
-              trailing: const Row(
+              trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('拖拽调整'),
-                  SizedBox(width: 4),
-                  Icon(Icons.chevron_right, size: 20),
+                  Text(
+                    _getHomeModuleSummary(settings),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, size: 20),
                 ],
               ),
               onTap: () => _showModuleOrderSheet(context),
+            ),
+
+            // Book Type Badge Scopes
+            ListTile(
+              leading: const Icon(Icons.bookmark_border),
+              title: const Text('类型标记'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _getBookTypeBadgeSummary(settings),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, size: 20),
+                ],
+              ),
+              onTap: () => _showBookTypeBadgeSheet(context),
             ),
 
             const Divider(),
@@ -790,6 +854,7 @@ class SettingsPage extends ConsumerWidget {
     final filters = <String>[];
     if (settings.ignoreJapanese) filters.add('日语');
     if (settings.ignoreAI) filters.add('AI');
+    if (settings.ignoreLevel6) filters.add('Level6');
     if (filters.isEmpty) return '关闭';
     return filters.join(', ');
   }
@@ -880,6 +945,30 @@ class SettingsPage extends ConsumerWidget {
                       onChanged: (value) => notifier.setIgnoreAI(value),
                     ),
                     onTap: () => notifier.setIgnoreAI(!settings.ignoreAI),
+                  ),
+                  ListTile(
+                    leading: Icon(
+                      Icons.lock_outline,
+                      color:
+                          settings.ignoreLevel6
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(
+                      '忽略 Level 6 书籍',
+                      style: TextStyle(
+                        color:
+                            settings.ignoreLevel6 ? colorScheme.primary : null,
+                        fontWeight:
+                            settings.ignoreLevel6 ? FontWeight.bold : null,
+                      ),
+                    ),
+                    trailing: Switch(
+                      value: settings.ignoreLevel6,
+                      onChanged: (value) => notifier.setIgnoreLevel6(value),
+                    ),
+                    onTap:
+                        () => notifier.setIgnoreLevel6(!settings.ignoreLevel6),
                   ),
                   const SizedBox(height: 16),
                 ],
@@ -1096,6 +1185,133 @@ class SettingsPage extends ConsumerWidget {
                       ),
                     ),
                   ],
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _getHomeModuleSummary(AppSettings settings) {
+    final enabledCount = settings.enabledHomeModules.length;
+    if (enabledCount == 0) return '不要全部关闭啦';
+    if (enabledCount == 3) return '全部';
+    return '$enabledCount 个模块';
+  }
+
+  String _getBookTypeBadgeSummary(AppSettings settings) {
+    final enabledCount = settings.bookTypeBadgeScopes.length;
+    if (enabledCount == 0) return '关闭';
+    if (enabledCount == 5) return '全部';
+    return '$enabledCount 个区域';
+  }
+
+  void _showBookTypeBadgeSheet(BuildContext context) {
+    const scopeLabels = {
+      'ranking': '排行榜',
+      'recent': '最近更新',
+      'search': '搜索',
+      'shelf': '书架',
+      'history': '历史',
+    };
+    const scopeIcons = {
+      'ranking': Icons.leaderboard_outlined,
+      'recent': Icons.update,
+      'search': Icons.search,
+      'shelf': Icons.collections_bookmark_outlined,
+      'history': Icons.history,
+    };
+    const allScopes = ['ranking', 'recent', 'search', 'shelf', 'history'];
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final settings = ref.watch(settingsProvider);
+            final notifier = ref.read(settingsProvider.notifier);
+            final colorScheme = Theme.of(context).colorScheme;
+            final textTheme = Theme.of(context).textTheme;
+
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      '类型标记',
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      '在封面左下角显示书籍类型图标（录入/翻译/转载）',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  ...allScopes.map((scopeId) {
+                    final isEnabled = settings.bookTypeBadgeScopes.contains(
+                      scopeId,
+                    );
+                    return ListTile(
+                      leading: Icon(
+                        scopeIcons[scopeId],
+                        color:
+                            isEnabled
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                      ),
+                      title: Text(
+                        scopeLabels[scopeId] ?? scopeId,
+                        style: TextStyle(
+                          color: isEnabled ? colorScheme.primary : null,
+                          fontWeight: isEnabled ? FontWeight.bold : null,
+                        ),
+                      ),
+                      trailing: Switch(
+                        value: isEnabled,
+                        onChanged: (value) {
+                          final newScopes = List<String>.from(
+                            settings.bookTypeBadgeScopes,
+                          );
+                          if (value) {
+                            if (!newScopes.contains(scopeId)) {
+                              newScopes.add(scopeId);
+                            }
+                          } else {
+                            newScopes.remove(scopeId);
+                          }
+                          notifier.setBookTypeBadgeScopes(newScopes);
+                        },
+                      ),
+                      onTap: () {
+                        final newScopes = List<String>.from(
+                          settings.bookTypeBadgeScopes,
+                        );
+                        if (isEnabled) {
+                          newScopes.remove(scopeId);
+                        } else {
+                          newScopes.add(scopeId);
+                        }
+                        notifier.setBookTypeBadgeScopes(newScopes);
+                      },
+                    );
+                  }),
                   const SizedBox(height: 16),
                 ],
               ),

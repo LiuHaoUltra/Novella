@@ -5,6 +5,8 @@ import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_type_badge.dart';
 
 class RankingPage extends ConsumerStatefulWidget {
   final String initialType; // 'daily', 'weekly', 'monthly'
@@ -81,7 +83,12 @@ class _RankingPageState extends ConsumerState<RankingPage>
     setState(() => _loading = true);
 
     try {
-      final books = await _bookService.getRank(_currentDays);
+      var books = await _bookService.getRank(_currentDays);
+      // Client-side Level6 filter
+      final settings = ref.read(settingsProvider);
+      if (settings.ignoreLevel6) {
+        books = books.where((b) => b.level != 6).toList();
+      }
       _cache[_currentType] = books;
       _displayedCount[_currentType] = _pageSize.clamp(0, books.length);
       if (mounted) {
@@ -258,10 +265,12 @@ class _RankingPageState extends ConsumerState<RankingPage>
                       decoration: BoxDecoration(
                         color:
                             rank == 1
-                                ? Colors.amber
+                                ? const Color(0xFFFFD700) // Gold
                                 : rank == 2
-                                ? Colors.grey.shade400
-                                : Colors.brown.shade300,
+                                ? const Color(
+                                  0xFF78909C,
+                                ) // Silver (blue-tinted)
+                                : const Color(0xFFCD7F32), // Bronze
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -273,6 +282,11 @@ class _RankingPageState extends ConsumerState<RankingPage>
                       ),
                     ),
                   ),
+                // Book type badge
+                if (ref
+                    .watch(settingsProvider)
+                    .isBookTypeBadgeEnabled('ranking'))
+                  BookTypeBadge(category: book.category),
               ],
             ),
           ),

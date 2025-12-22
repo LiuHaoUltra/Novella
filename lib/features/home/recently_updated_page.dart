@@ -6,6 +6,7 @@ import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_type_badge.dart';
 
 class RecentlyUpdatedPage extends ConsumerStatefulWidget {
   const RecentlyUpdatedPage({super.key});
@@ -63,10 +64,15 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
       );
+      // Client-side Level6 filter
+      final filteredBooks =
+          settings.ignoreLevel6
+              ? result.books.where((b) => b.level != 6).toList()
+              : result.books;
 
       if (mounted) {
         setState(() {
-          _books = result.books;
+          _books = filteredBooks;
           _currentPage = 1;
           _totalPages = result.totalPages;
           _loading = false;
@@ -96,10 +102,15 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
       );
+      // Client-side Level6 filter
+      final filteredBooks =
+          settings.ignoreLevel6
+              ? result.books.where((b) => b.level != 6).toList()
+              : result.books;
 
       if (mounted) {
         setState(() {
-          _books.addAll(result.books);
+          _books.addAll(filteredBooks);
           _currentPage = nextPage;
           _totalPages = result.totalPages;
           _loadingMore = false;
@@ -190,42 +201,50 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: Hero(
-              tag: heroTag,
-              child: Card(
-                elevation: 2,
-                shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: CachedNetworkImage(
-                  imageUrl: book.cover,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder:
-                      (context, url) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Center(
-                          child: Icon(
-                            Icons.book_outlined,
-                            color: colorScheme.onSurfaceVariant,
+            child: Stack(
+              children: [
+                Hero(
+                  tag: heroTag,
+                  child: Card(
+                    elevation: 2,
+                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: CachedNetworkImage(
+                      imageUrl: book.cover,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      placeholder:
+                          (context, url) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Center(
+                              child: Icon(
+                                Icons.book_outlined,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                  errorWidget:
-                      (context, url, error) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: colorScheme.onSurfaceVariant,
+                      errorWidget:
+                          (context, url, error) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                    ),
+                  ),
                 ),
-              ),
+                if (ref
+                    .watch(settingsProvider)
+                    .isBookTypeBadgeEnabled('recent'))
+                  BookTypeBadge(category: book.category),
+              ],
             ),
           ),
           SizedBox(

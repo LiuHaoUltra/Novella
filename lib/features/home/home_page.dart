@@ -10,6 +10,7 @@ import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_type_badge.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -121,7 +122,11 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
       final days = _rankTypeToDay(rankType);
       // Pass ignore filters to ranking as well since we updated BookService
-      final books = await _bookService.getRank(days);
+      var books = await _bookService.getRank(days);
+      // Client-side Level6 filter
+      if (settings.ignoreLevel6) {
+        books = books.where((b) => b.level != 6).toList();
+      }
 
       if (mounted) {
         setState(() {
@@ -141,10 +146,14 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     try {
       if (internalLoading) setState(() => _loading = true);
 
-      final books = await _bookService.getLatestBooks(
+      var books = await _bookService.getLatestBooks(
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
       );
+      // Client-side Level6 filter
+      if (settings.ignoreLevel6) {
+        books = books.where((b) => b.level != 6).toList();
+      }
 
       if (mounted) {
         setState(() {
@@ -169,8 +178,13 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     });
 
     try {
+      final settings = ref.read(settingsProvider);
       final days = _rankTypeToDay(rankType);
-      final books = await _bookService.getRank(days);
+      var books = await _bookService.getRank(days);
+      // Client-side Level6 filter
+      if (settings.ignoreLevel6) {
+        books = books.where((b) => b.level != 6).toList();
+      }
       setState(() {
         _rankBooks = books;
         _loading = false;
@@ -615,10 +629,12 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                       decoration: BoxDecoration(
                         color:
                             rank == 1
-                                ? Colors.amber
+                                ? const Color(0xFFFFD700) // Gold
                                 : rank == 2
-                                ? Colors.grey.shade400
-                                : Colors.brown.shade300,
+                                ? const Color(
+                                  0xFF78909C,
+                                ) // Silver (blue-tinted)
+                                : const Color(0xFFCD7F32), // Bronze
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -630,6 +646,13 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                       ),
                     ),
                   ),
+                // Book type badge - use 'ranking' scope for rank section, 'recent' for recent section
+                if (ref
+                    .watch(settingsProvider)
+                    .isBookTypeBadgeEnabled(
+                      source == 'rank' ? 'ranking' : 'recent',
+                    ))
+                  BookTypeBadge(category: book.category),
               ],
             ),
           ),

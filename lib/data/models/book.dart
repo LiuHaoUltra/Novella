@@ -1,3 +1,24 @@
+/// Book category information from API
+class BookCategory {
+  final String shortName; // "录入" / "翻译" / "转载"
+  final String name; // "录入完成" / "翻译中" etc.
+  final String color; // Hex color from server
+
+  const BookCategory({
+    required this.shortName,
+    required this.name,
+    required this.color,
+  });
+
+  factory BookCategory.fromJson(Map<dynamic, dynamic> json) {
+    return BookCategory(
+      shortName: json['ShortName'] as String? ?? '',
+      name: json['Name'] as String? ?? '',
+      color: json['Color'] as String? ?? '',
+    );
+  }
+}
+
 class Book {
   final int id;
   final String title;
@@ -6,6 +27,7 @@ class Book {
   final DateTime lastUpdatedAt;
   final String? userName;
   final int? level;
+  final BookCategory? category;
 
   Book({
     required this.id,
@@ -15,6 +37,7 @@ class Book {
     required this.lastUpdatedAt,
     this.userName,
     this.level,
+    this.category,
   });
 
   factory Book.fromJson(Map<dynamic, dynamic> json) {
@@ -29,6 +52,12 @@ class Book {
       return DateTime.now();
     }
 
+    // Parse category if present
+    BookCategory? category;
+    if (json['Category'] is Map) {
+      category = BookCategory.fromJson(json['Category']);
+    }
+
     return Book(
       id: json['Id'] as int? ?? 0,
       title: json['Title'] as String? ?? 'Unknown',
@@ -39,6 +68,7 @@ class Book {
       lastUpdatedAt: parseDate(json['LastUpdatedAt']),
       userName: json['UserName'] as String?,
       level: json['Level'] as int?,
+      category: category,
     );
   }
 }

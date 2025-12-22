@@ -1,10 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/src/widgets/book_type_badge.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -333,53 +336,67 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
         children: [
           // Cover
           Expanded(
-            child: Hero(
-              tag: heroTag,
-              child: Card(
-                elevation: 2,
-                shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
-                clipBehavior: Clip.antiAlias,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child:
-                    book.cover.isNotEmpty
-                        ? CachedNetworkImage(
-                          imageUrl: book.cover,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          placeholder:
-                              (_, __) => Container(
-                                color: colorScheme.surfaceContainerHighest,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.book_outlined,
-                                    color: colorScheme.onSurfaceVariant,
+            child: Stack(
+              children: [
+                Hero(
+                  tag: heroTag,
+                  child: Card(
+                    elevation: 2,
+                    shadowColor: colorScheme.shadow.withValues(alpha: 0.3),
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child:
+                        book.cover.isNotEmpty
+                            ? CachedNetworkImage(
+                              imageUrl: book.cover,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              placeholder:
+                                  (_, __) => Container(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.book_outlined,
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
                                   ),
+                              errorWidget:
+                                  (_, __, ___) => Container(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    child: Center(
+                                      child: Icon(
+                                        Icons.broken_image_outlined,
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                            )
+                            : Container(
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Center(
+                                child: Icon(
+                                  Icons.book_outlined,
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
-                          errorWidget:
-                              (_, __, ___) => Container(
-                                color: colorScheme.surfaceContainerHighest,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                        )
-                        : Container(
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Center(
-                            child: Icon(
-                              Icons.book_outlined,
-                              color: colorScheme.onSurfaceVariant,
                             ),
-                          ),
-                        ),
-              ),
+                  ),
+                ),
+                Consumer(
+                  builder: (context, ref, _) {
+                    if (ref
+                        .watch(settingsProvider)
+                        .isBookTypeBadgeEnabled('history')) {
+                      return BookTypeBadge(category: book.category);
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
             ),
           ),
           // Title - Fixed height container to prevent cover ratio issues
