@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -124,7 +125,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     _readingTimeService.endSession();
     // Save cached position synchronously before dispose
     if (_chapter != null && _lastScrollPercent > 0) {
-      print('[POSITION] DISPOSE: Saving cached position $_lastScrollPercent');
+      developer.log(
+        'DISPOSE: Saving cached position $_lastScrollPercent',
+        name: 'POSITION',
+      );
       _progressService.saveLocalScrollPosition(
         bookId: widget.bid,
         chapterId: _chapter!.id,

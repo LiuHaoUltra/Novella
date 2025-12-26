@@ -1,5 +1,5 @@
+import 'dart:developer' as developer;
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -63,7 +63,7 @@ class FontManager {
     int cacheLimit = 30,
   }) async {
     if (fontUrl == null || fontUrl.isEmpty) {
-      print('[FONT] Font URL is null or empty');
+      developer.log('Font URL is null or empty', name: 'FONT');
       return null;
     }
 
@@ -73,7 +73,7 @@ class FontManager {
       url = 'https://api.lightnovel.life$fontUrl';
     }
 
-    print('[FONT] Loading font from: $url');
+    developer.log('Loading font from: $url', name: 'FONT');
 
     try {
       // 1. Generate unique font family name from URL hash
@@ -82,7 +82,7 @@ class FontManager {
 
       // 2. Check if already loaded in Flutter engine
       if (_loadedFonts.contains(fontFamily)) {
-        print('[FONT] Font already loaded: $fontFamily');
+        developer.log('Font already loaded: $fontFamily', name: 'FONT');
         return fontFamily;
       }
 
@@ -97,10 +97,10 @@ class FontManager {
       if (await ttfFile.exists()) {
         ttfBytes = await ttfFile.readAsBytes();
         if (ttfBytes.length < 100) {
-          print('[FONT] Cached TTF invalid, re-downloading');
+          developer.log('Cached TTF invalid, re-downloading', name: 'FONT');
           await ttfFile.delete();
         } else {
-          print('[FONT] Using cached TTF: $ttfPath');
+          developer.log('Using cached TTF: $ttfPath', name: 'FONT');
           // Update modification time to mark as recently used
           await ttfFile.setLastModified(DateTime.now());
         }
@@ -109,34 +109,35 @@ class FontManager {
       // 5. Download and convert if needed
       if (!await ttfFile.exists()) {
         // Download WOFF2 directly to memory (no disk caching)
-        print('[FONT] Downloading WOFF2...');
+        developer.log('Downloading WOFF2...', name: 'FONT');
         final response = await _dio.get<List<int>>(
           url,
           options: Options(responseType: ResponseType.bytes),
         );
         final woff2Bytes = Uint8List.fromList(response.data!);
-        print('[FONT] WOFF2 size: ${woff2Bytes.length} bytes');
+        developer.log('WOFF2 size: ${woff2Bytes.length} bytes', name: 'FONT');
 
         // Convert WOFF2 to TTF using Rust FFI
-        print('[FONT] Converting WOFF2 to TTF via Rust FFI...');
-        print('[FONT] RustLib initialized: $rustLibInitialized');
+        developer.log('Converting WOFF2 to TTF via Rust FFI...', name: 'FONT');
+        developer.log('RustLib initialized: $rustLibInitialized', name: 'FONT');
 
         // Check if RustLib was successfully initialized in main.dart
         if (!rustLibInitialized) {
-          print(
-            '[FONT] *** ERROR: RustLib not initialized! Error: $rustLibInitError',
+          developer.log(
+            '*** ERROR: RustLib not initialized! Error: $rustLibInitError',
+            name: 'FONT',
           );
           return null;
         }
 
         ttfBytes = await rust_ffi.convertWoff2ToTtf(woff2Data: woff2Bytes);
-        print('[FONT] TTF size: ${ttfBytes.length} bytes');
+        developer.log('TTF size: ${ttfBytes.length} bytes', name: 'FONT');
 
         if (ttfBytes.isNotEmpty) {
           await ttfFile.writeAsBytes(ttfBytes);
-          print('[FONT] Saved TTF: $ttfPath');
+          developer.log('Saved TTF: $ttfPath', name: 'FONT');
         } else {
-          print('[FONT] Conversion returned empty!');
+          developer.log('Conversion returned empty!', name: 'FONT');
           return null;
         }
       }
@@ -148,7 +149,10 @@ class FontManager {
       await fontLoader.load();
 
       _loadedFonts.add(fontFamily);
-      print('[FONT] Loaded: $fontFamily (${ttfBytes.length} bytes)');
+      developer.log(
+        'Loaded: $fontFamily (${ttfBytes.length} bytes)',
+        name: 'FONT',
+      );
 
       // 7. Enforce cache limit if enabled
       if (cacheEnabled) {
@@ -157,8 +161,8 @@ class FontManager {
 
       return fontFamily;
     } catch (e, stack) {
-      print('[FONT] Error: $e');
-      print('[FONT] Stack: $stack');
+      developer.log('Error: $e', name: 'FONT');
+      developer.log('Stack: $stack', name: 'FONT');
       return null;
     }
   }
@@ -181,9 +185,9 @@ class FontManager {
       // Clear loaded fonts set since cache is gone
       _loadedFonts.clear();
 
-      print('[FONT] Cleared $deletedCount cached files');
+      developer.log('Cleared $deletedCount cached files', name: 'FONT');
     } catch (e) {
-      print('[FONT] Error clearing cache: $e');
+      developer.log('Error clearing cache: $e', name: 'FONT');
     }
     return deletedCount;
   }
@@ -221,12 +225,15 @@ class FontManager {
         // Remove from loaded set
         _loadedFonts.remove(baseName);
 
-        print('[FONT] Removed old cache: $baseName');
+        developer.log('Removed old cache: $baseName', name: 'FONT');
       }
 
-      print('[FONT] Enforced cache limit: $limit (removed $toDelete)');
+      developer.log(
+        'Enforced cache limit: $limit (removed $toDelete)',
+        name: 'FONT',
+      );
     } catch (e) {
-      print('[FONT] Error enforcing cache limit: $e');
+      developer.log('Error enforcing cache limit: $e', name: 'FONT');
     }
   }
 
@@ -244,7 +251,7 @@ class FontManager {
         totalSize += await file.length();
       }
     } catch (e) {
-      print('[FONT] Error getting cache info: $e');
+      developer.log('Error getting cache info: $e', name: 'FONT');
     }
 
     return FontCacheInfo(fileCount: fileCount, totalSizeBytes: totalSize);

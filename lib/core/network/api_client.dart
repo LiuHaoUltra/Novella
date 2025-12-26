@@ -1,13 +1,9 @@
-import 'dart:io';
+import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
-import 'package:logging/logging.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
-
-  static final _logger = Logger('ApiClient');
 
   late final Dio _dio;
 
@@ -27,7 +23,7 @@ class ApiClient {
         requestBody: true,
         responseBody: true,
         error: true,
-        logPrint: (log) => print('[DIO] $log'),
+        logPrint: (log) => developer.log(log.toString(), name: 'DIO'),
       ),
     );
 

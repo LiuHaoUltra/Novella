@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:logging/logging.dart';
 import 'package:msgpack_dart/msgpack_dart.dart' as msgpack;
@@ -14,8 +15,6 @@ class NovelHubProtocol implements IHubProtocol {
   @override
   TransferFormat get transferFormat => TransferFormat.Binary;
 
-  final Logger _logger = Logger('NovelHubProtocol');
-
   @override
   List<HubMessageBase> parseMessages(Object input, Logger? logger) {
     if (input is! Uint8List && input is! List<int>) {
@@ -31,7 +30,7 @@ class NovelHubProtocol implements IHubProtocol {
     // SignalR Binary protocol uses VarInt length-prefixed framing:
     // [VarInt Length][MessagePack Payload][VarInt Length][MessagePack Payload]...
 
-    print('[PROTOCOL] Received ${bytes.length} bytes total');
+    developer.log('Received ${bytes.length} bytes total', name: 'PROTOCOL');
 
     int offset = 0;
     while (offset < bytes.length) {
@@ -59,31 +58,35 @@ class NovelHubProtocol implements IHubProtocol {
       final payloadEnd = payloadStart + length;
 
       if (payloadEnd > bytes.length) {
-        print(
-          '[PROTOCOL] Incomplete: need $length but have ${bytes.length - payloadStart}',
+        developer.log(
+          'Incomplete: need $length but have ${bytes.length - payloadStart}',
+          name: 'PROTOCOL',
         );
         break;
       }
 
       final payload = bytes.sublist(payloadStart, payloadEnd);
-      print('[PROTOCOL] Parsing message: length=$length bytes');
+      developer.log('Parsing message: length=$length bytes', name: 'PROTOCOL');
 
       try {
         final deserialized = msgpack.deserialize(payload);
-        print('[PROTOCOL] Deserialized: ${deserialized.runtimeType}');
+        developer.log(
+          'Deserialized: ${deserialized.runtimeType}',
+          name: 'PROTOCOL',
+        );
 
         if (deserialized is List && deserialized.isNotEmpty) {
           _parseSingleMessage(deserialized, messages);
-          print('[PROTOCOL] Message type: ${deserialized[0]}');
+          developer.log('Message type: ${deserialized[0]}', name: 'PROTOCOL');
         }
       } catch (e) {
-        print('[PROTOCOL] Error: $e');
+        developer.log('Error: $e', name: 'PROTOCOL');
       }
 
       offset = payloadEnd;
     }
 
-    print('[PROTOCOL] Parsed ${messages.length} messages');
+    developer.log('Parsed ${messages.length} messages', name: 'PROTOCOL');
     return messages;
   }
 
@@ -134,7 +137,7 @@ class NovelHubProtocol implements IHubProtocol {
       case 3: // MessageType.Completion
         // [3, Headers, InvocationId, ResultKind, Result/Error]
         // ResultKind: 1=Error, 2=Void (no result), 3=NonVoid (has result)
-        print('[PROTOCOL] Completion raw: $input');
+        developer.log('Completion raw: $input', name: 'PROTOCOL');
 
         // Safely extract fields with null checks
         final invocationId = input.length > 2 ? input[2]?.toString() : null;
@@ -147,18 +150,22 @@ class NovelHubProtocol implements IHubProtocol {
         if (resultKind == 1 && input.length > 4) {
           // Error - index 4 is error message
           error = input[4]?.toString();
-          print('[PROTOCOL] Completion is ERROR: $error');
+          developer.log('Completion is ERROR: $error', name: 'PROTOCOL');
         } else if (resultKind == 3 && input.length > 4) {
           // NonVoid - index 4 is result
           result = input[4];
-          print('[PROTOCOL] Completion has RESULT type: ${result.runtimeType}');
+          developer.log(
+            'Completion has RESULT type: ${result.runtimeType}',
+            name: 'PROTOCOL',
+          );
         } else if (resultKind == 2) {
           // Void - no result
-          print('[PROTOCOL] Completion is VOID (no result)');
+          developer.log('Completion is VOID (no result)', name: 'PROTOCOL');
         }
 
-        print(
-          '[PROTOCOL] Completion: invocationId=$invocationId, resultKind=$resultKind, hasResult=${result != null}',
+        developer.log(
+          'Completion: invocationId=$invocationId, resultKind=$resultKind, hasResult=${result != null}',
+          name: 'PROTOCOL',
         );
 
         messages.add(
@@ -222,7 +229,7 @@ class NovelHubProtocol implements IHubProtocol {
 
       // Debug: show what we're sending
       if (message.target == 'SaveReadPosition') {
-        print('[PROTOCOL] SaveReadPosition args: $args');
+        developer.log('SaveReadPosition args: $args', name: 'PROTOCOL');
       }
     } else if (message is CompletionMessage) {
       // [3, Headers, InvocationId, ResultKind, Result]
@@ -245,7 +252,7 @@ class NovelHubProtocol implements IHubProtocol {
     // Add other types as needed
 
     // Serialize using msgpack_dart
-    final serialized = msgpack.serialize(payload) as Uint8List;
+    final serialized = msgpack.serialize(payload);
 
     // SignalR Binary protocol requires VarInt length prefix
     final lengthBytes = _writeVarInt(serialized.length);
@@ -253,8 +260,9 @@ class NovelHubProtocol implements IHubProtocol {
     result.setAll(0, lengthBytes);
     result.setAll(lengthBytes.length, serialized);
 
-    print(
-      '[PROTOCOL] writeMessage: type=${payload.isNotEmpty ? payload[0] : "?"}, payload=${serialized.length} bytes, total=${result.length} bytes',
+    developer.log(
+      'writeMessage: type=${payload.isNotEmpty ? payload[0] : "?"}, payload=${serialized.length} bytes, total=${result.length} bytes',
+      name: 'PROTOCOL',
     );
 
     return result;

@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -115,8 +116,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    print(
+    developer.log(
       'Loaded settings: ignoreJapanese=${prefs.getBool('setting_ignoreJapanese')}, ignoreAI=${prefs.getBool('setting_ignoreAI')}',
+      name: 'Settings',
     );
     state = AppSettings(
       fontSize: prefs.getDouble('setting_fontSize') ?? 18.0,
