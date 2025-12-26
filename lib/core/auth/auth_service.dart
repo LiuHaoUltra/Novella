@@ -1,8 +1,8 @@
+import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:novella/core/network/api_client.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:logging/logging.dart';
 
 class AuthService {
@@ -82,9 +82,9 @@ class AuthService {
     // Await SignalR connection to ensure it's ready (like reference's getMyInfo() pattern)
     try {
       await _signalRService.init();
-      print('[AUTH] SignalR initialized successfully');
+      developer.log('SignalR initialized successfully', name: 'AUTH');
     } catch (e) {
-      print('[AUTH] SignalR init error: $e');
+      developer.log('SignalR init error: $e', name: 'AUTH');
       // Don't throw - user can still retry API calls which will reconnect
     }
   }
@@ -92,11 +92,13 @@ class AuthService {
   /// Use refresh token to get a new session token
   Future<bool> _refreshSessionToken(String refreshToken) async {
     try {
-      print(
-        '[AUTH] Calling refresh_token API with token: ${refreshToken.substring(0, 20)}...',
+      developer.log(
+        'Calling refresh_token API with token: ${refreshToken.substring(0, 20)}...',
+        name: 'AUTH',
       );
-      print(
-        '[AUTH] API URL: ${_apiClient.dio.options.baseUrl}/api/user/refresh_token',
+      developer.log(
+        'API URL: ${_apiClient.dio.options.baseUrl}/api/user/refresh_token',
+        name: 'AUTH',
       );
 
       final response = await _apiClient.dio.post(
@@ -104,9 +106,18 @@ class AuthService {
         data: {'token': refreshToken},
       );
 
-      print('[AUTH] Refresh API response status: ${response.statusCode}');
-      print('[AUTH] Refresh API response data: ${response.data}');
-      print('[AUTH] Response data type: ${response.data.runtimeType}');
+      developer.log(
+        'Refresh API response status: ${response.statusCode}',
+        name: 'AUTH',
+      );
+      developer.log(
+        'Refresh API response data: ${response.data}',
+        name: 'AUTH',
+      );
+      developer.log(
+        'Response data type: ${response.data.runtimeType}',
+        name: 'AUTH',
+      );
 
       if (response.statusCode == 200) {
         // API returns: {Response: "JWT_TOKEN", Status: 200, Success: true, Msg: ""}
@@ -125,23 +136,30 @@ class AuthService {
         if (newToken != null && newToken.isNotEmpty) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('auth_token', newToken);
-          print(
-            '[AUTH] Session token refreshed successfully: ${newToken.substring(0, 30)}...',
+          developer.log(
+            'Session token refreshed successfully: ${newToken.substring(0, 30)}...',
+            name: 'AUTH',
           );
           return true;
         }
       }
 
-      print('[AUTH] Refresh token API returned unexpected response');
+      developer.log(
+        'Refresh token API returned unexpected response',
+        name: 'AUTH',
+      );
       return false;
     } on DioException catch (e) {
-      print('[AUTH] DioException in refresh: ${e.type}');
-      print('[AUTH] DioException message: ${e.message}');
-      print('[AUTH] DioException response: ${e.response?.data}');
-      print('[AUTH] DioException status: ${e.response?.statusCode}');
+      developer.log('DioException in refresh: ${e.type}', name: 'AUTH');
+      developer.log('DioException message: ${e.message}', name: 'AUTH');
+      developer.log('DioException response: ${e.response?.data}', name: 'AUTH');
+      developer.log(
+        'DioException status: ${e.response?.statusCode}',
+        name: 'AUTH',
+      );
       return false;
     } catch (e) {
-      print('[AUTH] Failed to refresh session token: $e');
+      developer.log('Failed to refresh session token: $e', name: 'AUTH');
       return false;
     }
   }

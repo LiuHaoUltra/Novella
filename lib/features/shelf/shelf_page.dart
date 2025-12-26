@@ -37,6 +37,10 @@ class ShelfPageState extends State<ShelfPage> {
   int _selectedFilter = 0;
   Set<int> _markedBookIds = {};
 
+  // Multi-select state
+  bool _isMultiSelectMode = false;
+  final Set<int> _selectedBookIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -280,6 +284,36 @@ class ShelfPageState extends State<ShelfPage> {
             ),
           ),
 
+          // Delete button (only in multi-select mode with selections)
+          if (_isMultiSelectMode && _selectedBookIds.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              color: Colors.red,
+              onPressed: _confirmBatchDelete,
+              tooltip: '删除所选 (${_selectedBookIds.length})',
+            ),
+
+          // Exit multi-select button (only in multi-select mode)
+          if (_isMultiSelectMode)
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                setState(() {
+                  _selectedBookIds.clear();
+                  _isMultiSelectMode = false;
+                });
+              },
+              tooltip: '退出多选',
+            ),
+
+          // Enter multi-select button (only when not in multi-select mode)
+          if (!_isMultiSelectMode)
+            IconButton(
+              icon: const Icon(Icons.checklist),
+              onPressed: () => setState(() => _isMultiSelectMode = true),
+              tooltip: '多选',
+            ),
+
           // Refresh button
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -398,31 +432,36 @@ class ShelfPageState extends State<ShelfPage> {
 
     return GestureDetector(
       onTap: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder:
-                (_) => BookDetailPage(
-                  bookId: item.id as int,
-                  initialCoverUrl: book?.cover,
-                  initialTitle: book?.title,
-                  heroTag: heroTag,
-                ),
-          ),
-        );
-        // Refresh grid when returning from detail page to reflect any changes
-        _refreshGrid();
-        // Also refresh marked book IDs if filter is active
-        if (_selectedFilter > 0) {
-          final status = BookMarkStatus.values[_selectedFilter];
-          final markedIds = await _bookMarkService.getBooksWithStatus(status);
-          if (mounted) {
-            setState(() {
-              _markedBookIds = markedIds;
-            });
+        if (_isMultiSelectMode) {
+          // Toggle selection in multi-select mode
+          _toggleBookSelection(item.id as int);
+        } else {
+          // Normal navigation to detail page
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder:
+                  (_) => BookDetailPage(
+                    bookId: item.id as int,
+                    initialCoverUrl: book?.cover,
+                    initialTitle: book?.title,
+                    heroTag: heroTag,
+                  ),
+            ),
+          );
+          // Refresh grid when returning from detail page to reflect any changes
+          _refreshGrid();
+          // Also refresh marked book IDs if filter is active
+          if (_selectedFilter > 0) {
+            final status = BookMarkStatus.values[_selectedFilter];
+            final markedIds = await _bookMarkService.getBooksWithStatus(status);
+            if (mounted) {
+              setState(() {
+                _markedBookIds = markedIds;
+              });
+            }
           }
         }
       },
-      onLongPress: () => _showBookOptions(item, book?.title ?? 'Book'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -438,7 +477,10 @@ class ShelfPageState extends State<ShelfPage> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child:
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        // Book cover image
                         book == null
                             ? Container(
                               color: colorScheme.surfaceContainerHighest,
@@ -472,8 +514,22 @@ class ShelfPageState extends State<ShelfPage> {
                                     ),
                                   ),
                             ),
+                        // Red overlay for selected books in multi-select mode
+                        if (_isMultiSelectMode &&
+                            _selectedBookIds.contains(item.id))
+                          Container(
+                            color: Colors.red.withValues(alpha: 0.6),
+                            child: const Center(
+                              child: Icon(
+                                Icons.delete,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  // Book type badge (inside Hero)
                   Consumer(
                     builder: (context, ref, _) {
                       if (ref
@@ -509,54 +565,85 @@ class ShelfPageState extends State<ShelfPage> {
     );
   }
 
-  void _showBookOptions(ShelfItem item, String title) {
-    showModalBottomSheet(
-      context: context,
-      builder:
-          (context) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.playlist_remove, color: Colors.red),
-                  title: const Text(
-                    '移出书架',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _confirmRemoveBook(item, title);
-                  },
-                ),
-              ],
-            ),
-          ),
-    );
+  /// Toggle book selection in multi-select mode
+  void _toggleBookSelection(int bookId) {
+    setState(() {
+      if (_selectedBookIds.contains(bookId)) {
+        _selectedBookIds.remove(bookId);
+      } else {
+        _selectedBookIds.add(bookId);
+      }
+    });
   }
 
-  Future<void> _confirmRemoveBook(ShelfItem item, String title) async {
-    final confirmed = await showDialog<bool>(
+  /// Confirm and execute batch deletion
+  Future<void> _confirmBatchDelete() async {
+    final count = _selectedBookIds.length;
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('移出 "$title"?'),
-            content: const Text('确定要将这本书移出书架吗？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
+      useSafeArea: true,
+      showDragHandle: true,
+      isDismissible: false,
+      builder: (context) {
+        final colorScheme = Theme.of(context).colorScheme;
+        final textTheme = Theme.of(context).textTheme;
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Text(
+                  '移出书架',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('移出'),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '确定要将选中的 $count 本书移出书架吗？',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
+              ListTile(
+                leading: Icon(Icons.delete, color: colorScheme.error),
+                title: Text(
+                  '确认移出',
+                  style: TextStyle(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onTap: () => Navigator.pop(context, true),
+              ),
+              ListTile(
+                leading: Icon(Icons.close, color: colorScheme.onSurfaceVariant),
+                title: const Text('取消'),
+                onTap: () => Navigator.pop(context, false),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
+        );
+      },
     );
 
     if (confirmed == true) {
-      await _userService.removeFromShelf(item.id as int);
-      // Optimistic refresh
+      for (final id in _selectedBookIds) {
+        await _userService.removeFromShelf(id);
+      }
+      setState(() {
+        _selectedBookIds.clear();
+        _isMultiSelectMode = false;
+      });
       _refreshGrid(force: false);
     }
   }

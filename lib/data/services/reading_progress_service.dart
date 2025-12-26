@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -104,9 +105,10 @@ class ReadingProgressService {
     // Store as simple string for SharedPreferences
     await prefs.setString(key, data);
 
-    print('[POSITION] SAVED: key=$key, data=$data');
-    print(
-      '[POSITION] SAVED: chapterId=$chapterId, sortNum=$sortNum, scroll=${(scrollPosition * 100).toStringAsFixed(1)}%',
+    developer.log('SAVED: key=$key, data=$data', name: 'POSITION');
+    developer.log(
+      'SAVED: chapterId=$chapterId, sortNum=$sortNum, scroll=${(scrollPosition * 100).toStringAsFixed(1)}%',
+      name: 'POSITION',
     );
   }
 
@@ -116,10 +118,10 @@ class ReadingProgressService {
     final key = 'read_pos_$bookId';
     final data = prefs.getString(key);
 
-    print('[POSITION] LOAD: key=$key, data=$data');
+    developer.log('LOAD: key=$key, data=$data', name: 'POSITION');
 
     if (data == null) {
-      print('[POSITION] LOAD: no saved position found');
+      developer.log('LOAD: no saved position found', name: 'POSITION');
       return null;
     }
 
@@ -132,13 +134,14 @@ class ReadingProgressService {
           sortNum: int.parse(parts[1]),
           scrollPosition: double.parse(parts[2]),
         );
-        print(
-          '[POSITION] LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, scroll=${(pos.scrollPosition * 100).toStringAsFixed(1)}%',
+        developer.log(
+          'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, scroll=${(pos.scrollPosition * 100).toStringAsFixed(1)}%',
+          name: 'POSITION',
         );
         return pos;
       }
     } catch (e) {
-      print('[POSITION] LOAD ERROR: $e');
+      developer.log('LOAD ERROR: $e', name: 'POSITION');
       _logger.warning('Failed to parse local position: $e');
     }
     return null;

@@ -41,8 +41,9 @@ class UserService extends ChangeNotifier {
       // Handle empty result (server error returned empty map)
       if (result.isEmpty) {
         _logger.warning('Empty shelf response from server');
-        if (_initialized)
+        if (_initialized) {
           return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
+        }
         return [];
       }
 
@@ -50,8 +51,9 @@ class UserService extends ChangeNotifier {
       final data = result['data'];
       if (data == null || data is! List) {
         _logger.warning('Unexpected shelf data type: ${data?.runtimeType}');
-        if (_initialized)
+        if (_initialized) {
           return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
+        }
         return [];
       }
 
@@ -68,8 +70,9 @@ class UserService extends ChangeNotifier {
       return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
     } catch (e) {
       _logger.severe('Failed to get shelf: $e');
-      if (_initialized)
+      if (_initialized) {
         return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
+      }
       return [];
     }
   }

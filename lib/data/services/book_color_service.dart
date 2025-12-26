@@ -47,7 +47,7 @@ class BookColorService {
       // Cache the result
       _schemeCache[cacheKey] = colorScheme;
       _logger.info(
-        'Generated ColorScheme for book $bookId (${brightness.name}): seed=${seedColor.value.toRadixString(16)}',
+        'Generated ColorScheme for book $bookId (${brightness.name}): seed=${seedColor.toARGB32().toRadixString(16)}',
       );
 
       return colorScheme;

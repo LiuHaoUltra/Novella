@@ -26,7 +26,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   List<Book> _rankBooks = [];
   List<Book> _latestBooks = []; // Recently updated books
   bool _loading = true;
-  DateTime? _lastRefreshTime;
+
   String? _lastRankType;
 
   // Reading stats
@@ -108,7 +108,6 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     if (mounted) {
       setState(() {
         _loading = false;
-        _lastRefreshTime = DateTime.now();
       });
     }
   }

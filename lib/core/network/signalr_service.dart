@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
@@ -73,7 +74,7 @@ class SignalRService {
       _hubConnection = null;
       _isStarting = false;
       _connectionCompleter = null;
-      print('[SIGNALR] Connection stopped');
+      developer.log('Connection stopped', name: 'SIGNALR');
     }
   }
 
@@ -91,11 +92,11 @@ class SignalRService {
     final refreshToken = prefs.getString('refresh_token');
 
     if (refreshToken == null || refreshToken.isEmpty) {
-      print('[SIGNALR] No refresh token available');
+      developer.log('No refresh token available', name: 'SIGNALR');
       return '';
     }
 
-    print('[SIGNALR] Refreshing session token...');
+    developer.log('Refreshing session token...', name: 'SIGNALR');
     try {
       final response = await _dio.post(
         '/api/user/refresh_token',
@@ -107,29 +108,32 @@ class SignalRService {
         if (newToken != null && newToken is String && newToken.isNotEmpty) {
           // Store in memory only (like reference implementation)
           _sessionToken.set(newToken);
-          print('[SIGNALR] Session token refreshed');
+          developer.log('Session token refreshed', name: 'SIGNALR');
           return newToken;
         }
       }
     } catch (e) {
-      print('[SIGNALR] Failed to refresh token: $e');
+      developer.log('Failed to refresh token: $e', name: 'SIGNALR');
     }
 
     return '';
   }
 
   Future<void> init() async {
-    print('[SIGNALR] init() - current state: ${_hubConnection?.state}');
+    developer.log(
+      'init() - current state: ${_hubConnection?.state}',
+      name: 'SIGNALR',
+    );
 
     // If already connected, return immediately
     if (_hubConnection?.state == HubConnectionState.Connected) {
-      print('[SIGNALR] Already connected');
+      developer.log('Already connected', name: 'SIGNALR');
       return;
     }
 
     // If already starting, wait for existing connection attempt
     if (_isStarting && _connectionCompleter != null) {
-      print('[SIGNALR] Already connecting, waiting...');
+      developer.log('Already connecting, waiting...', name: 'SIGNALR');
       return _connectionCompleter!.future;
     }
 
@@ -143,10 +147,10 @@ class SignalRService {
     }
 
     final hubUrl = '$_baseUrl/hub/api';
-    print('[SIGNALR] Connecting to: $hubUrl');
+    developer.log('Connecting to: $hubUrl', name: 'SIGNALR');
 
     final token = await _getValidToken();
-    print('[SIGNALR] Token ready: ${token.isNotEmpty}');
+    developer.log('Token ready: ${token.isNotEmpty}', name: 'SIGNALR');
 
     _hubConnection =
         HubConnectionBuilder()
@@ -167,24 +171,24 @@ class SignalRService {
     _hubConnection?.serverTimeoutInMilliseconds = 30000;
 
     _hubConnection?.onclose(({Exception? error}) {
-      print('[SIGNALR] Closed: $error');
+      developer.log('Closed: $error', name: 'SIGNALR');
       _isStarting = false;
     });
 
     _hubConnection?.onreconnecting(({Exception? error}) {
-      print('[SIGNALR] Reconnecting: $error');
+      developer.log('Reconnecting: $error', name: 'SIGNALR');
     });
 
     _hubConnection?.onreconnected(({String? connectionId}) {
-      print('[SIGNALR] Reconnected: $connectionId');
+      developer.log('Reconnected: $connectionId', name: 'SIGNALR');
     });
 
     try {
       await _hubConnection?.start();
-      print('[SIGNALR] Connected successfully');
+      developer.log('Connected successfully', name: 'SIGNALR');
       _connectionCompleter?.complete();
     } catch (e) {
-      print('[SIGNALR] Failed to connect: $e');
+      developer.log('Failed to connect: $e', name: 'SIGNALR');
       _connectionCompleter?.completeError(e);
       _isStarting = false;
       rethrow;
@@ -204,12 +208,15 @@ class SignalRService {
 
   Future<T> invoke<T>(String methodName, {List<Object>? args}) async {
     return _requestQueue.enqueue(() async {
-      print('[SIGNALR] invoke($methodName) - state: ${_hubConnection?.state}');
+      developer.log(
+        'invoke($methodName) - state: ${_hubConnection?.state}',
+        name: 'SIGNALR',
+      );
 
       // Wait for connection if connecting/reconnecting (max 15 seconds)
       if (_hubConnection?.state == HubConnectionState.Connecting ||
           _hubConnection?.state == HubConnectionState.Reconnecting) {
-        print('[SIGNALR] Waiting for connection...');
+        developer.log('Waiting for connection...', name: 'SIGNALR');
         for (int i = 0; i < 30; i++) {
           await Future.delayed(const Duration(milliseconds: 500));
           if (_hubConnection?.state == HubConnectionState.Connected) {
@@ -220,12 +227,12 @@ class SignalRService {
 
       // If disconnected, try to restart once
       if (_hubConnection?.state == HubConnectionState.Disconnected) {
-        print('[SIGNALR] Disconnected, attempting restart...');
+        developer.log('Disconnected, attempting restart...', name: 'SIGNALR');
         try {
           await _hubConnection?.start();
-          print('[SIGNALR] Restart successful');
+          developer.log('Restart successful', name: 'SIGNALR');
         } catch (e) {
-          print('[SIGNALR] Restart failed: $e');
+          developer.log('Restart failed: $e', name: 'SIGNALR');
           throw Exception('SignalR connection failed: $e');
         }
       }
@@ -237,7 +244,7 @@ class SignalRService {
         );
       }
 
-      print('[SIGNALR] Invoking: $methodName');
+      developer.log('Invoking: $methodName', name: 'SIGNALR');
       final result = await _hubConnection!.invoke(methodName, args: args);
       return _processResponse<T>(result);
     });
@@ -246,11 +253,17 @@ class SignalRService {
   T _processResponse<T>(dynamic result) {
     dynamic processedResult = result;
 
-    print('[SIGNALR] _processResponse input type: ${result.runtimeType}');
+    developer.log(
+      '_processResponse input type: ${result.runtimeType}',
+      name: 'SIGNALR',
+    );
 
     // Handle completely null result (server error or invoke failure)
     if (result == null) {
-      print('[SIGNALR] Result is null, returning empty container for type $T');
+      developer.log(
+        'Result is null, returning empty container for type $T',
+        name: 'SIGNALR',
+      );
       if (T == Map || T.toString().contains('Map')) {
         return <dynamic, dynamic>{} as T;
       } else if (T == List || T.toString().contains('List')) {
@@ -265,8 +278,9 @@ class SignalRService {
       final status = result['Status'];
       var responseData = result['Response'];
 
-      print(
-        '[SIGNALR] Success=$success, ResponseType=${responseData.runtimeType}',
+      developer.log(
+        'Success=$success, ResponseType=${responseData.runtimeType}',
+        name: 'SIGNALR',
       );
 
       if (!success) {
@@ -275,7 +289,10 @@ class SignalRService {
 
       if (responseData == null) {
         // Handle null response - return empty container based on expected type
-        print('[SIGNALR] Response is null, returning empty container');
+        developer.log(
+          'Response is null, returning empty container',
+          name: 'SIGNALR',
+        );
         if (T == Map || T.toString().contains('Map')) {
           return <dynamic, dynamic>{} as T;
         } else if (T == List || T.toString().contains('List')) {
@@ -293,19 +310,25 @@ class SignalRService {
                 ? result['Response']
                 : List<int>.from(result['Response']);
 
-        print('[SIGNALR] Decompressing: ${bytes.length} bytes');
+        developer.log('Decompressing: ${bytes.length} bytes', name: 'SIGNALR');
         final decodedBytes = GZipDecoder().decodeBytes(bytes);
         // Web reference: Response = JSON.parse(ungzip(Response, { to: 'string' }))
         // The gzip-compressed data is JSON, not MessagePack
         final decodedData = jsonDecode(utf8.decode(decodedBytes));
-        print('[SIGNALR] Decompressed type: ${decodedData.runtimeType}');
+        developer.log(
+          'Decompressed type: ${decodedData.runtimeType}',
+          name: 'SIGNALR',
+        );
         processedResult = decodedData;
       } else {
         processedResult = responseData;
       }
     }
 
-    print('[SIGNALR] Returning type: ${processedResult.runtimeType} as $T');
+    developer.log(
+      'Returning type: ${processedResult.runtimeType} as $T',
+      name: 'SIGNALR',
+    );
     return processedResult as T;
   }
 }

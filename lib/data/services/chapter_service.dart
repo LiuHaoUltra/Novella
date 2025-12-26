@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
 
@@ -62,19 +63,26 @@ class ChapterService {
       );
 
       // Debug: Print raw chapter data to see structure
-      print('[CHAPTER] Raw result keys: ${result.keys.toList()}');
+      developer.log(
+        'Raw result keys: ${result.keys.toList()}',
+        name: 'CHAPTER',
+      );
       if (result['Chapter'] != null) {
         final chapter = result['Chapter'];
-        print('[CHAPTER] Chapter keys: ${chapter.keys.toList()}');
-        print('[CHAPTER] Font value: ${chapter['Font']}');
+        developer.log(
+          'Chapter keys: ${chapter.keys.toList()}',
+          name: 'CHAPTER',
+        );
+        developer.log('Font value: ${chapter['Font']}', name: 'CHAPTER');
 
         // Extract ReadPosition if available
         String? position;
         final readPos = result['ReadPosition'];
         if (readPos != null && readPos is Map) {
           position = readPos['Position'] as String?;
-          print(
-            '[CHAPTER] ReadPosition: ChapterId=${readPos['ChapterId']}, Position=$position',
+          developer.log(
+            'ReadPosition: ChapterId=${readPos['ChapterId']}, Position=$position',
+            name: 'CHAPTER',
           );
         }
 

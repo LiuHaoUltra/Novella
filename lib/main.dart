@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -33,32 +34,33 @@ String? rustLibInitError;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  print('Flutter: WidgetsInitialized');
-  print(
-    'Flutter: Platform.isIOS=${Platform.isIOS}, Platform.isMacOS=${Platform.isMacOS}',
+  developer.log('WidgetsInitialized', name: 'Flutter');
+  developer.log(
+    'Platform.isIOS=${Platform.isIOS}, Platform.isMacOS=${Platform.isMacOS}',
+    name: 'Flutter',
   );
 
   try {
     // Initialize Rust FFI for WOFF2 font conversion
-    print('Flutter: Initializing RustLib...');
+    developer.log('Initializing RustLib...', name: 'Flutter');
 
     // === 关键修改：手动指定加载方式 ===
     // 不再使用默认的 init()，而是传入我们要它找的那个“库”
     await RustLib.init(externalLibrary: _loadLibrary());
 
     rustLibInitialized = true;
-    print('Flutter: RustLib Initialized Successfully!');
+    developer.log('RustLib Initialized Successfully!', name: 'Flutter');
   } catch (e, stack) {
     rustLibInitialized = false;
     rustLibInitError = e.toString();
-    print('Flutter: *** FAILED to initialize RustLib: $e');
-    print('Flutter: Stack trace: $stack');
+    developer.log('*** FAILED to initialize RustLib: $e', name: 'Flutter');
+    developer.log('Stack trace: $stack', name: 'Flutter');
   }
 
   try {
-    print('Flutter: Initializing WindowManager...');
+    developer.log('Initializing WindowManager...', name: 'Flutter');
     await windowManager.ensureInitialized();
-    print('Flutter: WindowManager Initialized');
+    developer.log('WindowManager Initialized', name: 'Flutter');
 
     WindowOptions windowOptions = const WindowOptions(
       size: Size(450, 850),
@@ -72,14 +74,14 @@ void main() async {
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      print('Flutter: Window Ready to Show');
+      developer.log('Window Ready to Show', name: 'Flutter');
       await windowManager.show();
       await windowManager.focus();
-      print('Flutter: Window Should be Visible');
+      developer.log('Window Should be Visible', name: 'Flutter');
     });
   } catch (e, stack) {
-    print('Flutter: Failed to initialize WindowManager: $e');
-    print(stack);
+    developer.log('Failed to initialize WindowManager: $e', name: 'Flutter');
+    developer.log('$stack', name: 'Flutter');
   }
 
   runApp(const ProviderScope(child: MyApp()));
