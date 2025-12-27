@@ -4,8 +4,8 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Login page that opens system browser for authentication
-/// and accepts RefreshToken input (only RefreshToken is needed!)
+/// 浏览器登录页面
+/// 仅需输入 RefreshToken
 class LoginBrowserPage extends StatefulWidget {
   const LoginBrowserPage({super.key});
 
@@ -67,7 +67,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
     });
 
     try {
-      // Save refresh token first, then let AuthService handle session token refresh
+      // 保存 refresh token，随后 AuthService 自动刷新 session token
       await _authService.saveTokens('', refreshToken);
       _logger.info('RefreshToken saved, will auto-refresh session token');
 
@@ -112,7 +112,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Instructions card
+            // 说明卡片
             Card(
               elevation: 0,
               color: colorScheme.surfaceContainerHighest,
@@ -151,7 +151,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
             ),
             const SizedBox(height: 24),
 
-            // Open browser button
+            // 打开浏览器按钮
             FilledButton.icon(
               onPressed: _isLoading ? null : _openBrowserLogin,
               icon: const Icon(Icons.open_in_browser),
@@ -167,7 +167,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
             const Divider(),
             const SizedBox(height: 16),
 
-            // RefreshToken input section
+            // Token 输入区域
             Text(
               '输入 RefreshToken',
               style: Theme.of(
@@ -183,7 +183,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
             ),
             const SizedBox(height: 16),
 
-            // RefreshToken input
+            // 输入框
             TextField(
               controller: _refreshTokenController,
               decoration: InputDecoration(
@@ -201,7 +201,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
             ),
             const SizedBox(height: 24),
 
-            // Submit button
+            // 提交按钮
             FilledButton(
               onPressed: _isLoading ? null : _submitRefreshToken,
               style: FilledButton.styleFrom(
@@ -220,7 +220,7 @@ class _LoginBrowserPageState extends State<LoginBrowserPage> {
                       : const Text('确认登录'),
             ),
 
-            // Error message
+            // 错误信息
             if (_errorMessage != null) ...[
               const SizedBox(height: 16),
               Card(

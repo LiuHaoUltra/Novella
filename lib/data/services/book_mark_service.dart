@@ -1,16 +1,16 @@
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Book mark status enum for local marking feature.
-/// This is purely local and does not sync with the server.
+/// 本地书签状态枚举
+/// 仅本地，不同步至服务器
 enum BookMarkStatus {
-  none, // 0 - No mark
+  none, // 0 - 无
   toRead, // 1 - 待读
   reading, // 2 - 在读
   finished, // 3 - 已读
 }
 
-/// Extension to provide display text and icon data for BookMarkStatus.
+/// 状态枚举扩展（显示文本/图标）
 extension BookMarkStatusExtension on BookMarkStatus {
   String get displayName {
     switch (this) {
@@ -25,7 +25,7 @@ extension BookMarkStatusExtension on BookMarkStatus {
     }
   }
 
-  /// Icon name for display (use with Icons class)
+  /// 图标名称
   String get iconName {
     switch (this) {
       case BookMarkStatus.none:
@@ -40,9 +40,9 @@ extension BookMarkStatusExtension on BookMarkStatus {
   }
 }
 
-/// Service for managing local book marks.
-/// Stores book reading status (to read, reading, finished) in SharedPreferences.
-/// This is a purely LOCAL feature and does NOT affect any server data.
+/// 本地书签管理服务
+/// 使用 SharedPreferences 存储阅读状态
+/// 纯本地功能，不影响服务端数据
 class BookMarkService {
   static final Logger _logger = Logger('BookMarkService');
   static final BookMarkService _instance = BookMarkService._internal();
@@ -50,11 +50,11 @@ class BookMarkService {
   factory BookMarkService() => _instance;
   BookMarkService._internal();
 
-  // Prefix for book mark storage keys
+  // 存储键前缀
   static const _markPrefix = 'book_mark_';
 
-  /// Set the mark status for a book.
-  /// Pass [BookMarkStatus.none] to remove the mark.
+  /// 设置标记状态
+  /// 传入 [none] 移除标记
   Future<void> setBookMark(int bookId, BookMarkStatus status) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_markPrefix$bookId';

@@ -9,7 +9,7 @@ import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
 class RankingPage extends ConsumerStatefulWidget {
-  final String initialType; // 'daily', 'weekly', 'monthly'
+  final String initialType; // 'daily'（日）, 'weekly'（周）, 'monthly'（月）
 
   const RankingPage({super.key, this.initialType = 'weekly'});
 
@@ -84,7 +84,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
 
     try {
       var books = await _bookService.getRank(_currentDays);
-      // Client-side Level6 filter
+      // 客户端 Level6 过滤
       final settings = ref.read(settingsProvider);
       if (settings.ignoreLevel6) {
         books = books.where((b) => b.level != 6).toList();
@@ -113,7 +113,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
 
     setState(() => _loadingMore = true);
 
-    // Simulate a brief delay for smooth UX
+    // 模拟短暂延迟提升体验
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) {
         setState(() {
@@ -251,7 +251,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
                           ),
                     ),
                   ),
-                  // Rank badge for top 3 (inside Hero)
+                  // 前三名排行角标（Hero 内部）
                   if (rank <= 3)
                     Positioned(
                       left: 4,
@@ -281,7 +281,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
                         ),
                       ),
                     ),
-                  // Book type badge (inside Hero)
+                  // 书籍类型角标（Hero 内部）
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('ranking'))
@@ -291,7 +291,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
             ),
           ),
           SizedBox(
-            height: 36, // Fixed height for 2 lines of text
+            height: 36, // 固定高度容纳两行文字
             child: Padding(
               padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
               child: Text(

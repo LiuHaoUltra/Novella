@@ -1,11 +1,18 @@
+/*
+ * This request queue architecture is inspired by the lightnovelshelf/web project.
+ * Original Repository: https://github.com/LightNovelShelf/Web
+ * Original License: AGPL-3.0
+ * * Reference: src/services/internal/request/createRequestQueue.ts
+ * Implements client-side rate limiting to match server expectations.
+ */
+
 import 'dart:async';
 import 'dart:collection';
 
-/// A singleton queue to manage API requests and enforce rate limiting.
-///
-/// Limits requests to 5 per 5 seconds to prevent account bans.
+/// 单例请求队列，管理速率限制
+/// 限制 5秒内 5个请求，防止封号
 class RequestQueue {
-  // Singleton instance
+  // 单例实例
   static final RequestQueue _instance = RequestQueue._internal();
 
   factory RequestQueue() {
@@ -14,23 +21,21 @@ class RequestQueue {
 
   RequestQueue._internal();
 
-  // Rate limiting configuration
+  // 速率限制配置
   static const int _maxRequests = 5;
   static const Duration _windowDuration = Duration(seconds: 5);
 
-  // Queue of timestamps of recent requests
+  // 最近请求时间戳队列
   final Queue<DateTime> _requestTimestamps = Queue<DateTime>();
 
-  // Queue of pending requests
+  // 待处理请求队列
   final Queue<_PendingRequest> _pendingRequests = Queue<_PendingRequest>();
 
-  // Lock to ensure sequential processing check
+  // 顺序处理锁
   bool _isProcessing = false;
 
-  /// Enqueues a request execution.
-  ///
-  /// [bypassQueue] can be set to true for requests that should not be rate limited
-  /// (e.g., CDN images, though usually those are handled by UI components directly).
+  /// 请求入队
+  /// [bypassQueue] 为 true 时跳过速率限制（如 CDN 图片）
   Future<T> enqueue<T>(
     Future<T> Function() request, {
     bool bypassQueue = false,
@@ -45,39 +50,34 @@ class RequestQueue {
     return completer.future;
   }
 
-  /// Processes the queue of pending requests.
+  /// 处理队列中的待处理请求
   Future<void> _processQueue() async {
     if (_isProcessing) return;
     _isProcessing = true;
 
     try {
       while (_pendingRequests.isNotEmpty) {
-        // Clean up old timestamps
+        // 清理过期时间戳
         final now = DateTime.now();
         while (_requestTimestamps.isNotEmpty &&
             now.difference(_requestTimestamps.first) > _windowDuration) {
           _requestTimestamps.removeFirst();
         }
 
-        // Check if we can send a request
+        // 检查是否可发送请求
         if (_requestTimestamps.length < _maxRequests) {
           final pending = _pendingRequests.removeFirst();
 
-          // Record timestamp BEFORE execution to be conservative
+          // 执行前记录时间戳（保守策略）
           _requestTimestamps.add(DateTime.now());
 
-          // Execute request
-          // We don't await the result here to block the queue processing loop
-          // (concurrent requests allowed within limit), but since we are
-          // enforcing a strict limit, we can just launch it.
-          // However, the PRD says "Max 5 requests per 5 seconds".
-          // It doesn't strictly say "Serial execution", but "Global Request Queue" suggests serialization might be desired or just rate limiting.
-          // "If limit reached, strictly await and block subsequent requests."
-          // So we only block if limit is reached.
+          // 执行请求
+          // 此处不等待结果，允许并发但受限于速率限制
+          // 仅在达到限制时阻塞
 
           _executeRequest(pending);
         } else {
-          // Limit reached, calculate time to wait
+          // 达到限制，计算等待时间
           if (_requestTimestamps.isNotEmpty) {
             final firstRequestTime = _requestTimestamps.first;
             final waitDuration =
@@ -86,7 +86,7 @@ class RequestQueue {
               await Future.delayed(waitDuration);
             }
           } else {
-            // Should not happen if length >= max, but safe fallback
+            // 安全回退逻辑
             await Future.delayed(const Duration(milliseconds: 100));
           }
         }

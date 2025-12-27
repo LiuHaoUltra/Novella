@@ -3,7 +3,7 @@ import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/features/auth/login_browser_page.dart';
 import 'package:novella/features/main_page.dart';
 
-/// MD3 Onboarding-style login page
+/// MD3 风格登录/引导页
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -25,12 +25,12 @@ class _LoginPageState extends State<LoginPage> {
     final isLoggedIn = await _authService.tryAutoLogin();
     if (mounted) {
       if (isLoggedIn) {
-        // Auto-login successful
+        // 自动登录成功
         Navigator.of(
           context,
         ).pushReplacement(MaterialPageRoute(builder: (_) => const MainPage()));
       } else {
-        // Show login page
+        // 显示登录页
         setState(() {
           _checkingLogin = false;
         });
@@ -65,7 +65,7 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               children: [
                 const Spacer(flex: 2),
-                // App Icon / Logo
+                // 应用图标
                 Container(
                   width: 120,
                   height: 120,
@@ -87,7 +87,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                // Title
+                // 标题
                 Text(
                   'Novella',
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
@@ -96,7 +96,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Subtitle
+                // 副标题
                 Text(
                   '轻书架第三方客户端',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -104,7 +104,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const Spacer(flex: 1),
-                // Info Card
+                // 信息卡片
                 Card(
                   elevation: 0,
                   color: colorScheme.surfaceContainerHighest.withAlpha(128),
@@ -146,7 +146,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const Spacer(flex: 2),
-                // Login Button
+                // 登录按钮
                 FilledButton.icon(
                   onPressed: () => _startLogin(context),
                   icon: const Icon(Icons.arrow_forward_rounded),
@@ -163,7 +163,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Skip hint (optional)
+                // 跳过提示
                 TextButton(
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -196,7 +196,7 @@ class _LoginPageState extends State<LoginPage> {
     );
 
     if (result != null && context.mounted) {
-      // Login successful - navigate to main page
+      // 登录成功，跳转主页
       Navigator.of(
         context,
       ).pushReplacement(MaterialPageRoute(builder: (_) => const MainPage()));

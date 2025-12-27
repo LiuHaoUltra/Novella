@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:novella/data/models/book.dart';
 
 /// A badge widget that displays book type (录入/翻译/转载) as an icon
-/// Positioned at bottom-right corner, similar style to ranking badge
+/// 位于右下角，样式类似排名角标
 class BookTypeBadge extends StatelessWidget {
   final BookCategory? category;
 
@@ -49,7 +49,7 @@ class BookTypeBadge extends StatelessWidget {
   Color? _parseColor(String colorStr) {
     if (colorStr.isEmpty) return null;
     try {
-      // Handle hex color like "#FF5733" or "FF5733"
+      // 处理十六进制颜色，如 "#FF5733" 或 "FF5733"
       String hex = colorStr.replaceFirst('#', '');
       if (hex.length == 6) {
         hex = 'FF$hex'; // Add alpha

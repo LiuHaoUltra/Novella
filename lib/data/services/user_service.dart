@@ -13,11 +13,11 @@ class UserService extends ChangeNotifier {
 
   final SignalRService _signalRService = SignalRService();
 
-  // Local cache of shelf items
+  // 书架项目本地缓存
   List<Map<String, dynamic>> _shelfCache = [];
   bool _initialized = false;
 
-  /// Ensure shelf data is loaded from server
+  /// 确保从服务器加载书架数据
   Future<void> ensureInitialized() async {
     if (_initialized) return;
     await getShelf();
@@ -29,7 +29,7 @@ class UserService extends ChangeNotifier {
         return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
       }
 
-      // Reference sends [params, options]. Params is null, options has UseGzip.
+      // 参考实现：发送 [params, options]
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetBookShelf',
         args: <Object>[
@@ -38,7 +38,7 @@ class UserService extends ChangeNotifier {
         ],
       );
 
-      // Handle empty result (server error returned empty map)
+      // 处理空结果（服务端返回空 Map）
       if (result.isEmpty) {
         _logger.warning('Empty shelf response from server');
         if (_initialized) {
@@ -47,7 +47,7 @@ class UserService extends ChangeNotifier {
         return [];
       }
 
-      // Response format: { data: ShelfItem[], ver?: number }
+      // 响应格式：{ data: ShelfItem[], ver?: number }
       final data = result['data'];
       if (data == null || data is! List) {
         _logger.warning('Unexpected shelf data type: ${data?.runtimeType}');
@@ -57,7 +57,7 @@ class UserService extends ChangeNotifier {
         return [];
       }
 
-      // Cache the raw shelf data for modification
+      // 缓存原始数据以便修改
       _shelfCache =
           data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       _initialized = true;
@@ -66,7 +66,7 @@ class UserService extends ChangeNotifier {
 
       notifyListeners();
 
-      // Return all items (Books and Folders)
+      // 返回所有项目（书和文件夹）
       return _shelfCache.map((e) => ShelfItem.fromJson(e)).toList();
     } catch (e) {
       _logger.severe('Failed to get shelf: $e');
@@ -77,7 +77,7 @@ class UserService extends ChangeNotifier {
     }
   }
 
-  /// Get all shelf items (books only, sorted by index)
+  /// 获取所有书架项目（仅书籍，按索引排序）
   List<ShelfItem> getShelfItems() {
     if (!_initialized) return [];
 
@@ -93,7 +93,7 @@ class UserService extends ChangeNotifier {
     return rawItems.map((e) => ShelfItem.fromJson(e)).toList();
   }
 
-  /// Re-index all items to make room at index 0 for new items
+  /// 重新索引，为新项目腾出位置 0
   void _reIndexItems() {
     // Sort by current index
     final items = _shelfCache.toList();
@@ -109,8 +109,8 @@ class UserService extends ChangeNotifier {
     }
   }
 
-  /// Add a book to the shelf
-  /// Reference: addToShelf in stores/shelf.ts
+  /// 添加书籍到书架
+  /// 参考 stores/shelf.ts
   Future<bool> addToShelf(int bookId) async {
     try {
       await ensureInitialized();
@@ -124,10 +124,10 @@ class UserService extends ChangeNotifier {
         return true;
       }
 
-      // Re-index existing items to make room at index 0
+      // 重新索引以腾出位置 0
       _reIndexItems();
 
-      // Create new shelf item at the top (index 0)
+      // 在顶部（索引 0）创建新项目
       final newItem = {
         'type': 'BOOK',
         'id': bookId,
@@ -138,7 +138,7 @@ class UserService extends ChangeNotifier {
 
       _shelfCache.add(newItem);
 
-      // Sync to server (Optimistic - no await)
+      // 同步到服务器（乐观更新，不等待）
       notifyListeners();
       _saveShelfToServer();
 
@@ -150,8 +150,8 @@ class UserService extends ChangeNotifier {
     }
   }
 
-  /// Remove a book from the shelf
-  /// Reference: removeFromShelf in stores/shelf.ts
+  /// 从书架移除书籍
+  /// 参考 stores/shelf.ts
   Future<bool> removeFromShelf(int bookId) async {
     try {
       await ensureInitialized();
@@ -179,21 +179,21 @@ class UserService extends ChangeNotifier {
   /// Check if a book is in the shelf
   bool isInShelf(int bookId) {
     if (!_initialized) {
-      // If not initialized, we can't be sure, but returning false is safer than true
-      // ideally caller MUST ensureInitialized()
+      // 若未初始化，返回 false 以策安全
+      // 调用者应确保已初始化
       _logger.warning('isInShelf called before initialization for $bookId');
     }
     return _shelfCache.any((e) => e['id'] == bookId && e['type'] == 'BOOK');
   }
 
-  // ============= History API Methods =============
+  // ============= 历史记录 API =============
 
-  /// Get user's reading history (list of book IDs)
-  /// Reference: getReadHistory in services/user/index.ts
-  /// Returns { Novel: number[], Comic: number[] }
+  /// 获取用户阅读历史（书籍 ID 列表）
+  /// 参考 services/user/index.ts
+  /// 返回 { Novel: number[], Comic: number[] }
   Future<List<int>> getReadHistory() async {
     try {
-      // Web client always passes [params, options] - for no-param calls, params can be empty {}
+      // Web 端总是传递 [params, options]
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetReadHistory',
         args: <Object>[
@@ -209,7 +209,7 @@ class UserService extends ChangeNotifier {
         return [];
       }
 
-      // Extract Novel list (we only care about novels for now)
+      // 提取 Novel 列表（目前仅关注小说）
       final novelList = result['Novel'];
       if (novelList == null || novelList is! List) {
         _logger.warning(
@@ -227,8 +227,8 @@ class UserService extends ChangeNotifier {
     }
   }
 
-  /// Clear user's reading history
-  /// Reference: clearHistory in services/user/index.ts
+  /// 清除用户阅读历史
+  /// 参考 services/user/index.ts
   Future<bool> clearReadHistory() async {
     try {
       // Include options like other API calls
@@ -248,7 +248,7 @@ class UserService extends ChangeNotifier {
     }
   }
 
-  /// Save shelf to server (like reference's syncToRemote)
+  /// 保存书架到服务器（参考 syncToRemote）
   Future<void> _saveShelfToServer() async {
     if (!_initialized) return;
 
@@ -266,8 +266,8 @@ class UserService extends ChangeNotifier {
       _logger.info('Shelf synced to server');
     } catch (e) {
       _logger.severe('Failed to sync shelf to server: $e');
-      // In optimistic UI, silent failure is ... effectively the current state
-      // We might want to retry or revert, but for now simple optimistic.
+      // 乐观 UI 中允许无声失败，即维持当前状态
+      // 暂时保持简单乐观更新
     }
   }
 }

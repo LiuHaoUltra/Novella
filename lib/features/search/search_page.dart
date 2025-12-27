@@ -23,7 +23,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _focusNode = FocusNode();
   final _scrollController = ScrollController();
 
-  // State
+  // 状态
   List<String> _history = [];
   List<Book> _results = [];
   int _currentPage = 1;
@@ -39,7 +39,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     super.initState();
     _loadHistory();
     _scrollController.addListener(_onScroll);
-    // Auto focus search field
+    // 自动聚焦搜索框
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
     });
@@ -78,10 +78,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void _addToHistory(String keyword) {
     if (keyword.isEmpty) return;
     setState(() {
-      // Remove if exists, then add to front
+      // 若存在则移除，然后添加到头部
       _history.remove(keyword);
       _history.insert(0, keyword);
-      // Keep max 20 items
+      // 保留最多20条记录
       if (_history.length > 20) {
         _history = _history.sublist(0, 20);
       }
@@ -129,7 +129,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     final keyword = _searchController.text.trim();
     if (keyword.isEmpty) return;
 
-    // Dismiss keyboard
+    // 收起键盘
     FocusScope.of(context).unfocus();
 
     _addToHistory(keyword);
@@ -213,14 +213,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   void _onHistoryTap(String keyword) {
-    // Cancel any pending delete first
+    // 先取消待删除状态
     if (_pendingDeleteItem != null && _pendingDeleteItem != keyword) {
       setState(() {
         _pendingDeleteItem = null;
       });
       return;
     }
-    // Dismiss keyboard before searching
+    // 搜索前收起键盘
     FocusScope.of(context).unfocus();
     _searchController.text = keyword;
     _search();
@@ -267,7 +267,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Widget _buildHistorySection(ColorScheme colorScheme, TextTheme textTheme) {
     return GestureDetector(
       onTap: () {
-        // Cancel pending delete when tapping empty area
+        // 点击空白区域取消待删除状态
         if (_pendingDeleteItem != null) {
           setState(() {
             _pendingDeleteItem = null;
@@ -280,7 +280,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // 头部
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -303,7 +303,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ),
             const SizedBox(height: 12),
 
-            // History chips
+            // 历史记录标签
             if (_history.isEmpty)
               Center(
                 child: Padding(
@@ -461,7 +461,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                           ),
                     ),
                   ),
-                  // Book type badge (inside Hero)
+                  // 书籍类型角标（Hero 内部）
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('search'))
@@ -471,7 +471,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ),
           ),
           SizedBox(
-            height: 36, // Fixed height for 2 lines of text
+            height: 36, // 固定高度容纳两行文字
             child: Padding(
               padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
               child: Text(

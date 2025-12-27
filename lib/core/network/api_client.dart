@@ -17,7 +17,7 @@ class ApiClient {
       ),
     );
 
-    // Add logging interceptor - use print() for terminal output
+    // 添加日志拦截器
     _dio.interceptors.add(
       LogInterceptor(
         requestBody: true,
@@ -27,8 +27,8 @@ class ApiClient {
       ),
     );
 
-    // Configure proxy for Windows (optional, comment out if not needed)
-    // Uncomment if your network requires proxy
+    // 配置代理（可选）
+    // 需要代理时取消注释
     /*
     (_dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
       final client = HttpClient();

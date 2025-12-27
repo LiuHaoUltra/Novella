@@ -24,7 +24,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   final _bookService = BookService();
   final _readingTimeService = ReadingTimeService();
   List<Book> _rankBooks = [];
-  List<Book> _latestBooks = []; // Recently updated books
+  List<Book> _latestBooks = []; // 最近更新书籍
   bool _loading = true;
 
   String? _lastRankType;
@@ -36,11 +36,10 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   @override
   void initState() {
     super.initState();
-    // Delay to allow settings to load
+    // 延迟以确保设置加载完成
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _readingTimeService
-          .recoverSession(); // Recover/Clear stale sessions
-      _fetchData(); // Fetch both ranking and latest
+      await _readingTimeService.recoverSession(); // 恢复/清除过期会话
+      _fetchData(); // 获取榜单和最新数据
       _loadReadingStats();
     });
   }
@@ -48,11 +47,11 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh reading stats when returning to this page (e.g. from bottom nav switch)
+    // 返回页面时刷新阅读统计
     _loadReadingStats();
   }
 
-  /// Load reading time statistics
+  /// 加载阅读时长统计
   Future<void> _loadReadingStats() async {
     try {
       final weekly = await _readingTimeService.getWeeklyMinutes();
@@ -94,7 +93,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     final settings = ref.read(settingsProvider);
     setState(() => _loading = true);
 
-    // Only fetch data for enabled modules
+    // 仅获取已启用模块的数据
     final futures = <Future<void>>[];
     if (settings.isModuleEnabled('ranking')) {
       futures.add(_fetchRanking(internalLoading: false));
@@ -120,7 +119,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       if (internalLoading) setState(() => _loading = true);
 
       final days = _rankTypeToDay(rankType);
-      // Pass ignore filters to ranking as well since we updated BookService
+
+      // 排名也应用过滤规则
       var books = await _bookService.getRank(days);
       // Client-side Level6 filter
       if (settings.ignoreLevel6) {
@@ -170,7 +170,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     await _fetchData();
   }
 
-  /// Fetch ranking for a specific type (used when settings change)
+  /// 获取指定类型榜单（设置变更时）
   Future<void> _fetchRankingForType(String rankType) async {
     setState(() {
       _loading = true;
@@ -207,16 +207,16 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     final textTheme = Theme.of(context).textTheme;
     final settings = ref.watch(settingsProvider);
 
-    // Refresh if rank type changed - update immediately to prevent infinite loop
+    // 检测榜单类型变更并刷新，立即更新防止死循环
     if (_lastRankType != null && _lastRankType != settings.homeRankType) {
       final newType = settings.homeRankType;
-      _lastRankType = newType; // Update immediately to prevent re-triggering
+      _lastRankType = newType; // 立即更新以防重复触发
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchRankingForType(newType);
       });
     }
 
-    // Only show first 9 books (3 rows)
+    // 仅展示前 9 本（3 行）
     final previewBooks = _rankBooks.take(9).toList();
 
     return Scaffold(
@@ -224,7 +224,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         onRefresh: _onRefresh,
         child: CustomScrollView(
           slivers: [
-            // Big Title Header with Search
+            // 大标题与搜索栏
             SliverToBoxAdapter(
               child: SafeArea(
                 bottom: false,
@@ -256,7 +256,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                 ),
               ),
             ),
-            // Dynamic modules based on order (only enabled ones)
+            // 基于排序的动态模块（仅启用）
             ...settings.homeModuleOrder
                 .where((m) => settings.isModuleEnabled(m))
                 .expand((moduleId) {
@@ -275,7 +275,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                       return <Widget>[];
                   }
                 }),
-            // Bottom padding
+            // 底部留白
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
           ],
         ),
@@ -283,7 +283,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     );
   }
 
-  /// Build stats cards section
+  /// 构建统计卡片区域
   List<Widget> _buildStatsSection(BuildContext context) {
     return [
       SliverToBoxAdapter(
@@ -310,13 +310,13 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     ];
   }
 
-  /// Build recently updated section
+  /// 构建最近更新区域
   List<Widget> _buildRecentlyUpdatedSection(BuildContext context, settings) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
     return [
-      // Section header
+      // 区域标题
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
@@ -392,7 +392,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     ];
   }
 
-  /// Build ranking section
+  /// 构建榜单区域
   List<Widget> _buildRankingSection(
     BuildContext context,
     settings,
@@ -402,7 +402,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     final textTheme = Theme.of(context).textTheme;
 
     return [
-      // Section header
+      // 区域标题
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
@@ -614,7 +614,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                           ),
                     ),
                   ),
-                  // Rank badge for top 3 (inside Hero)
+                  // 前三名排行角标（Hero 内部）
                   if (rank <= 3 && rank > 0)
                     Positioned(
                       left: 4,
@@ -644,7 +644,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                         ),
                       ),
                     ),
-                  // Book type badge (inside Hero)
+                  // 书籍类型角标（Hero 内部）
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled(
@@ -656,7 +656,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
             ),
           ),
           SizedBox(
-            height: 36, // Fixed height for 2 lines of text
+            height: 36, // 固定高度容纳两行文字
             child: Padding(
               padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
               child: Text(

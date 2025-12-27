@@ -1,16 +1,25 @@
+/*
+ * Portions of this file are derived from the lightnovelshelf/web project.
+ * Original Repository: https://github.com/LightNovelShelf/Web
+ * Original License: AGPL-3.0
+ * * Logic ported from:
+ * - src/services/internal/request/signalr/index.ts (Connection flow & Gzip handling)
+ * - src/utils/session.ts (TokenStorage mechanism)
+ */
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
-// msgpack_dart no longer needed - gzip data is JSON, not MessagePack
+// gzip 数据为 JSON 格式，无需 msgpack
 import 'package:novella/core/network/request_queue.dart';
 import 'package:signalr_netcore/signalr_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/network/novel_hub_protocol.dart';
 
-/// In-memory token storage with auto-expiry (like reference implementation)
+/// 带自动过期的内存令牌存储（参考原实现）
 class _TokenStorage {
   String _token = '';
   DateTime _lastUpdate = DateTime(1970);
@@ -21,7 +30,7 @@ class _TokenStorage {
   String get() {
     if (_token.isEmpty) return '';
     if (DateTime.now().difference(_lastUpdate) > _validity) {
-      return ''; // Token expired, return empty to trigger refresh
+      return ''; // 令牌过期，返回空以触发刷新
     }
     return _token;
   }
@@ -38,7 +47,7 @@ class _TokenStorage {
 }
 
 class SignalRService {
-  // Singleton
+  // 单例
   static final SignalRService _instance = SignalRService._internal();
   factory SignalRService() => _instance;
   SignalRService._internal();
@@ -47,16 +56,16 @@ class SignalRService {
   final String _baseUrl = 'https://api.lightnovel.life';
   final RequestQueue _requestQueue = RequestQueue();
 
-  // Connection state tracking
+  // 连接状态追踪
   Completer<void>? _connectionCompleter;
   bool _isStarting = false;
 
-  // In-memory session token with 3-second validity (like reference)
+  // 内存会话令牌，3秒有效期
   static final _TokenStorage _sessionToken = _TokenStorage(
     const Duration(seconds: 3),
   );
 
-  // Dio for token refresh
+  // 用于令牌刷新的 Dio 实例
   final Dio _dio = Dio(
     BaseOptions(
       baseUrl: 'https://api.lightnovel.life',
@@ -67,7 +76,7 @@ class SignalRService {
 
   bool get isConnected => _hubConnection?.state == HubConnectionState.Connected;
 
-  /// Stop the current connection
+  /// 停止当前连接
   Future<void> stop() async {
     if (_hubConnection != null) {
       await _hubConnection?.stop();
@@ -78,16 +87,16 @@ class SignalRService {
     }
   }
 
-  /// Get valid session token using in-memory storage with auto-expiry
-  /// Mimics reference implementation's TokenStorage pattern
+  /// 获取有效会话令牌（内存存储/自动刷新）
+  /// 仿照参考实现的 TokenStorage 模式
   Future<String> _getValidToken() async {
-    // Check in-memory token first (3-second validity like reference)
+    // 优先检查内存令牌（3秒有效期）
     String token = _sessionToken.get();
     if (token.isNotEmpty) {
       return token;
     }
 
-    // Token expired or empty, refresh using refresh_token
+    // 令牌过期或为空，使用 refresh_token 刷新
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString('refresh_token');
 
@@ -106,7 +115,7 @@ class SignalRService {
       if (response.statusCode == 200 && response.data is Map) {
         final newToken = response.data['Response'];
         if (newToken != null && newToken is String && newToken.isNotEmpty) {
-          // Store in memory only (like reference implementation)
+          // 仅存储在内存中
           _sessionToken.set(newToken);
           developer.log('Session token refreshed', name: 'SIGNALR');
           return newToken;
@@ -125,19 +134,19 @@ class SignalRService {
       name: 'SIGNALR',
     );
 
-    // If already connected, return immediately
+    // 若已连接直接返回
     if (_hubConnection?.state == HubConnectionState.Connected) {
       developer.log('Already connected', name: 'SIGNALR');
       return;
     }
 
-    // If already starting, wait for existing connection attempt
+    // 若正在启动，等待现有尝试
     if (_isStarting && _connectionCompleter != null) {
       developer.log('Already connecting, waiting...', name: 'SIGNALR');
       return _connectionCompleter!.future;
     }
 
-    // Start new connection
+    // 启动新连接
     _isStarting = true;
     _connectionCompleter = Completer<void>();
 
@@ -158,16 +167,15 @@ class SignalRService {
               hubUrl,
               options: HttpConnectionOptions(
                 accessTokenFactory: () async => await _getValidToken(),
-                requestTimeout: 30000, // 30 second request timeout
+                requestTimeout: 30000, // 30秒请求超时
               ),
             )
-            // Custom retry policy: 0s, 5s, 10s, 20s, 30s delays
+            // 自定义重试策略：0s, 5s, 10s, 20s, 30s
             .withAutomaticReconnect(retryDelays: [0, 5000, 10000, 20000, 30000])
             .withHubProtocol(NovelHubProtocol())
             .build();
 
-    // Configure server timeout - should be 2x the server's KeepAliveInterval
-    // Default server KeepAliveInterval is 15s, so we set 30s
+    // 配置服务器超时 - 默认为 15s 故设为 30s
     _hubConnection?.serverTimeoutInMilliseconds = 30000;
 
     _hubConnection?.onclose(({Exception? error}) {
@@ -195,7 +203,7 @@ class SignalRService {
     }
   }
 
-  /// Ensure connection is ready before making calls
+  /// 确保连接就绪
   Future<void> ensureConnected() async {
     if (_hubConnection?.state == HubConnectionState.Connected) {
       return;
@@ -213,7 +221,7 @@ class SignalRService {
         name: 'SIGNALR',
       );
 
-      // Wait for connection if connecting/reconnecting (max 15 seconds)
+      // 若正在连接/重连，等待最多 15 秒
       if (_hubConnection?.state == HubConnectionState.Connecting ||
           _hubConnection?.state == HubConnectionState.Reconnecting) {
         developer.log('Waiting for connection...', name: 'SIGNALR');
@@ -225,7 +233,7 @@ class SignalRService {
         }
       }
 
-      // If disconnected, try to restart once
+      // 若断开连接，尝试重启一次
       if (_hubConnection?.state == HubConnectionState.Disconnected) {
         developer.log('Disconnected, attempting restart...', name: 'SIGNALR');
         try {
@@ -237,7 +245,7 @@ class SignalRService {
         }
       }
 
-      // Final check
+      // 最终检查
       if (_hubConnection?.state != HubConnectionState.Connected) {
         throw Exception(
           'SignalR not connected (state: ${_hubConnection?.state})',
@@ -258,7 +266,7 @@ class SignalRService {
       name: 'SIGNALR',
     );
 
-    // Handle completely null result (server error or invoke failure)
+    // 处理空结果（服务器错误或调用失败）
     if (result == null) {
       developer.log(
         'Result is null, returning empty container for type $T',
@@ -288,7 +296,7 @@ class SignalRService {
       }
 
       if (responseData == null) {
-        // Handle null response - return empty container based on expected type
+        // 响应为空，根据类型返回空容器
         developer.log(
           'Response is null, returning empty container',
           name: 'SIGNALR',
@@ -312,8 +320,8 @@ class SignalRService {
 
         developer.log('Decompressing: ${bytes.length} bytes', name: 'SIGNALR');
         final decodedBytes = GZipDecoder().decodeBytes(bytes);
-        // Web reference: Response = JSON.parse(ungzip(Response, { to: 'string' }))
-        // The gzip-compressed data is JSON, not MessagePack
+        // 参考 Web 实现：解压 gzip
+        // gzip 解压后为 JSON 数据
         final decodedData = jsonDecode(utf8.decode(decodedBytes));
         developer.log(
           'Decompressed type: ${decodedData.runtimeType}',

@@ -33,11 +33,11 @@ class ShelfPageState extends State<ShelfPage> {
   int _displayedCount = 0;
   static const int _pageSize = 24;
 
-  // Filter state - 0: default (all), 1: toRead, 2: reading, 3: finished
+  // 筛选状态 - 0: 默认（全部）, 1: 待读, 2: 在读, 3: 已读
   int _selectedFilter = 0;
   Set<int> _markedBookIds = {};
 
-  // Multi-select state
+  // 多选状态
   bool _isMultiSelectMode = false;
   final Set<int> _selectedBookIds = {};
 
@@ -71,9 +71,9 @@ class ShelfPageState extends State<ShelfPage> {
     }
   }
 
-  /// Public method to refresh shelf from outside (silent, no loading indicator)
+  /// 外部刷新书架的方法（静默刷新，无加载指示器）
   void refresh() {
-    // Use silent refresh to avoid showing loading spinner
+    // 使用静默刷新避免显示加载转圈
     _refreshGrid(force: true);
   }
 
@@ -82,7 +82,7 @@ class ShelfPageState extends State<ShelfPage> {
         _lastRefreshTime != null &&
         DateTime.now().difference(_lastRefreshTime!) <
             const Duration(seconds: 2)) {
-      // Short debounce
+      // 简短防抖
       return;
     }
 
@@ -91,10 +91,10 @@ class ShelfPageState extends State<ShelfPage> {
     });
 
     try {
-      // 1. Ensure initialized
+      // 1. 确保已初始化
       await _userService.ensureInitialized();
 
-      // 2. Get items and fetch book details
+      // 2. 获取项目并拉取书籍详情
       await _refreshGrid(force: force);
     } catch (e) {
       _logger.severe('Error fetching shelf: $e');
@@ -110,17 +110,17 @@ class ShelfPageState extends State<ShelfPage> {
   }
 
   Future<void> _refreshGrid({bool force = false}) async {
-    // Fetch full shelf first to ensure cache is hot if forcing.
+    // 如果强制刷新，先拉取完整书架以确保缓存是最新的
     if (force) {
       await _userService.getShelf(forceRefresh: true);
     }
 
-    // Read from cache (or recently fetched) - only get books (no folders)
+    // 读取缓存（或最近拉取的数据） - 仅获取书籍（不含文件夹）
     final allItems = _userService.getShelfItems();
     final bookItems =
         allItems.where((e) => e.type == ShelfItemType.book).toList();
 
-    // Extract book IDs and fetch details
+    // 提取书籍ID并拉取详情
     final bookIds = bookItems.map((e) => e.id as int).toList();
 
     if (bookIds.isNotEmpty) {
@@ -148,7 +148,7 @@ class ShelfPageState extends State<ShelfPage> {
   }
 
   void _loadMoreItems() {
-    // Compute filtered items to get correct count
+    // 计算过滤后的项目以获取正确数量
     final filteredItems =
         _selectedFilter == 0
             ? _items
@@ -180,17 +180,17 @@ class ShelfPageState extends State<ShelfPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // Custom header
+            // 自定义头部
             _buildHeader(context, colorScheme, textTheme),
 
-            // Filter tabs
+            // 筛选标签页
             _buildFilterTabs(colorScheme),
 
-            // Content
+            // 内容
             Expanded(
               child: Builder(
                 builder: (context) {
-                  // Compute filtered items
+                  // 计算过滤后的项目
                   final allFilteredItems =
                       _selectedFilter == 0
                           ? _items
@@ -273,7 +273,7 @@ class ShelfPageState extends State<ShelfPage> {
       padding: const EdgeInsets.fromLTRB(24, 24, 16, 8),
       child: Row(
         children: [
-          // Title
+          // 标题
           Expanded(
             child: Text(
               '书架',
@@ -284,7 +284,7 @@ class ShelfPageState extends State<ShelfPage> {
             ),
           ),
 
-          // Delete button (only in multi-select mode with selections)
+          // 删除按钮（仅在多选模式且有选中项时显示）
           if (_isMultiSelectMode && _selectedBookIds.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete),
@@ -293,7 +293,7 @@ class ShelfPageState extends State<ShelfPage> {
               tooltip: '删除所选 (${_selectedBookIds.length})',
             ),
 
-          // Exit multi-select button (only in multi-select mode)
+          // 退出多选按钮（仅在多选模式显示）
           if (_isMultiSelectMode)
             IconButton(
               icon: const Icon(Icons.close),
@@ -306,7 +306,7 @@ class ShelfPageState extends State<ShelfPage> {
               tooltip: '退出多选',
             ),
 
-          // Enter multi-select button (only when not in multi-select mode)
+          // 进入多选按钮（仅在非多选模式显示）
           if (!_isMultiSelectMode)
             IconButton(
               icon: const Icon(Icons.checklist),
@@ -314,7 +314,7 @@ class ShelfPageState extends State<ShelfPage> {
               tooltip: '多选',
             ),
 
-          // Refresh button
+          // 刷新按钮
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _fetchShelf(force: true),
@@ -325,7 +325,7 @@ class ShelfPageState extends State<ShelfPage> {
     );
   }
 
-  /// Build the filter tabs row
+  /// 构建筛选标签行
   Widget _buildFilterTabs(ColorScheme colorScheme) {
     final labels = ['默认', '待读', '在读', '已读'];
     return SizedBox(
@@ -368,16 +368,16 @@ class ShelfPageState extends State<ShelfPage> {
     );
   }
 
-  /// Handle filter tab change
+  /// 处理筛选标签切换
   Future<void> _onFilterChanged(int filterIndex) async {
     if (filterIndex == _selectedFilter) return;
 
     setState(() {
       _selectedFilter = filterIndex;
-      _displayedCount = _pageSize; // Reset pagination when filter changes
+      _displayedCount = _pageSize; // 切换筛选时重置分页
     });
 
-    // For non-default filter, load marked book IDs from local storage
+    // 非默认筛选时，从本地存储加载标记的书籍ID
     if (filterIndex > 0) {
       final status = BookMarkStatus.values[filterIndex];
       final markedIds = await _bookMarkService.getBooksWithStatus(status);
@@ -387,7 +387,7 @@ class ShelfPageState extends State<ShelfPage> {
         });
       }
     } else {
-      // Reset to show all
+      // 重置为显示全部
       if (mounted) {
         setState(() {
           _markedBookIds = {};
@@ -396,7 +396,7 @@ class ShelfPageState extends State<ShelfPage> {
     }
   }
 
-  /// Get icon for filter index
+  /// 获取筛选索引对应的图标
   IconData _getFilterIcon(int filterIndex) {
     switch (filterIndex) {
       case 1:
@@ -410,7 +410,7 @@ class ShelfPageState extends State<ShelfPage> {
     }
   }
 
-  /// Get label for filter index
+  /// 获取筛选索引对应的标签
   String _getFilterLabel(int filterIndex) {
     switch (filterIndex) {
       case 1:
@@ -433,10 +433,10 @@ class ShelfPageState extends State<ShelfPage> {
     return GestureDetector(
       onTap: () async {
         if (_isMultiSelectMode) {
-          // Toggle selection in multi-select mode
+          // 在多选模式下切换选中状态
           _toggleBookSelection(item.id as int);
         } else {
-          // Normal navigation to detail page
+          // 正常跳转到详情页
           await Navigator.of(context).push(
             MaterialPageRoute(
               builder:
@@ -448,9 +448,9 @@ class ShelfPageState extends State<ShelfPage> {
                   ),
             ),
           );
-          // Refresh grid when returning from detail page to reflect any changes
+          // 从详情页返回时刷新网格以反映更改
           _refreshGrid();
-          // Also refresh marked book IDs if filter is active
+          // 如果筛选处于激活状态，也刷新标记的书籍ID
           if (_selectedFilter > 0) {
             final status = BookMarkStatus.values[_selectedFilter];
             final markedIds = await _bookMarkService.getBooksWithStatus(status);
@@ -480,7 +480,7 @@ class ShelfPageState extends State<ShelfPage> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Book cover image
+                        // 书籍封面图片
                         book == null
                             ? Container(
                               color: colorScheme.surfaceContainerHighest,
@@ -514,7 +514,7 @@ class ShelfPageState extends State<ShelfPage> {
                                     ),
                                   ),
                             ),
-                        // Red overlay for selected books in multi-select mode
+                        // 多选模式下选中书籍的红色遮罩
                         if (_isMultiSelectMode &&
                             _selectedBookIds.contains(item.id))
                           Container(
@@ -545,7 +545,7 @@ class ShelfPageState extends State<ShelfPage> {
             ),
           ),
           SizedBox(
-            height: 36, // Fixed height for 2 lines of text
+            height: 36, // 固定高度容纳两行文字
             child: Padding(
               padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
               child: Text(
@@ -565,7 +565,7 @@ class ShelfPageState extends State<ShelfPage> {
     );
   }
 
-  /// Toggle book selection in multi-select mode
+  /// 在多选模式下切换书籍选中状态
   void _toggleBookSelection(int bookId) {
     setState(() {
       if (_selectedBookIds.contains(bookId)) {
@@ -576,7 +576,7 @@ class ShelfPageState extends State<ShelfPage> {
     });
   }
 
-  /// Confirm and execute batch deletion
+  /// 确认并执行批量删除
   Future<void> _confirmBatchDelete() async {
     final count = _selectedBookIds.length;
     final confirmed = await showModalBottomSheet<bool>(

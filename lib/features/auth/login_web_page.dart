@@ -5,7 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:webview_windows/webview_windows.dart';
 
-/// WebView page for login with fetch interceptor to capture tokens
+/// WebView 登录页（拦截 fetch 获取 token）
 class LoginWebPage extends StatefulWidget {
   const LoginWebPage({super.key});
 
@@ -18,7 +18,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
   final _logger = Logger('LoginWebPage');
   final _authService = AuthService();
 
-  // Static flag to ensure environment is initialized only once
+  // 静态标志确保环境仅初始化一次
   static bool _environmentInitialized = false;
 
   bool _isInitialized = false;
@@ -26,7 +26,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
   Timer? _pollingTimer;
   String _statusText = '正在初始化...';
 
-  /// JavaScript interceptor to capture login API response
+  /// JS 拦截器捕获登录响应
   static const String _fetchInterceptorScript = '''
 (function() {
   if (window.__novella_interceptor_installed) return;
@@ -39,7 +39,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
       
-      // Intercept login API response
+      // 拦截登录接口
       if (url.includes('/api/user/login') || url.includes('/api/user/register')) {
         const clone = response.clone();
         const data = await clone.json();
@@ -71,15 +71,15 @@ class _LoginWebPageState extends State<LoginWebPage> {
 
   Future<void> _initWebView() async {
     try {
-      // Initialize WebView2 environment with proxy settings (only once)
+      // 初始化 WebView2 环境（仅一次）
       if (!_environmentInitialized) {
         try {
-          // WebView2 debug configuration:
-          // - proxy-server: Use Clash/V2Ray proxy
-          // - ignore-certificate-errors: Bypass SSL issues (debug only!)
-          // - disable-features=msWebOOUI: Reduce browser fingerprinting
-          // - user-agent: Set at env level to take effect before page load
-          // - remote-debugging-port: Enable Edge DevTools debugging
+          // WebView2 调试配置：
+          // - 代理：Clash/V2Ray
+          // - 忽略证书错误（调试）
+          // - 禁用特征指纹
+          // - UA 设置
+          // - 远程调试端口
           const debugArgs =
               '--proxy-server=http://127.0.0.1:7890 '
               '--ignore-certificate-errors '
@@ -93,7 +93,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
           _environmentInitialized = true;
           _logger.info('WebView2 environment initialized with debug flags');
         } catch (e) {
-          // Environment might already be initialized from a previous session
+          // 环境可能已初始化
           _logger.warning('Environment init skipped: $e');
           _environmentInitialized = true;
         }
@@ -103,7 +103,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
       await _controller.setBackgroundColor(Colors.white);
       await _controller.setPopupWindowPolicy(WebviewPopupWindowPolicy.deny);
 
-      // Set custom User-Agent to mimic standard Chrome browser
+      // 设置自定义 UA 模拟 Chrome
       const chromeUA =
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
       await _controller.executeScript('''
@@ -112,7 +112,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
         });
       ''');
 
-      // Listen for navigation events to inject interceptor
+      // 监听导航以注入拦截器
       _controller.url.listen((url) {
         _logger.info('Navigation: $url');
         _injectInterceptor();
@@ -125,15 +125,15 @@ class _LoginWebPageState extends State<LoginWebPage> {
         _statusText = '正在加载登录页面...';
       });
 
-      // First inject interceptor, then navigate
+      // 注入拦截器后导航
       await _controller.loadUrl('about:blank');
       await Future.delayed(const Duration(milliseconds: 100));
       await _injectInterceptor();
 
-      // Navigate to login page
+      // 跳转登录页
       await _controller.loadUrl('https://www.lightnovel.app/login');
 
-      // Start polling for auth data
+      // 开始轮询认证数据
       _startPolling();
     } catch (e) {
       _logger.severe('Failed to init webview: $e');
@@ -172,7 +172,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
       timer,
     ) async {
       try {
-        // Check for captured auth data
+        // 检查捕获的认证数据
         final result = await _controller.executeScript(
           'window.__novella_auth_data || ""',
         );
@@ -182,10 +182,10 @@ class _LoginWebPageState extends State<LoginWebPage> {
             result.toString() != 'null' &&
             result.toString() != '""') {
           String jsonStr = result.toString();
-          // Remove surrounding quotes if present
+          // 移除引号
           if (jsonStr.startsWith('"') && jsonStr.endsWith('"')) {
             jsonStr = jsonStr.substring(1, jsonStr.length - 1);
-            // Unescape the JSON string
+            // 反转义 JSON
             jsonStr = jsonStr.replaceAll(r'\"', '"');
           }
 
@@ -220,11 +220,11 @@ class _LoginWebPageState extends State<LoginWebPage> {
     });
 
     try {
-      // Save tokens
+      // 保存 Token
       await _authService.saveTokens(token, refreshToken);
 
       if (mounted) {
-        // Return success with tokens
+        // 返回成功及 Token
         Navigator.of(context).pop<Map<String, String>>({
           'token': token,
           'refreshToken': refreshToken,
@@ -275,7 +275,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
       ),
       body: Column(
         children: [
-          // Status bar
+          // 状态栏
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -304,7 +304,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
               ],
             ),
           ),
-          // WebView
+          // 浏览器视图
           Expanded(
             child:
                 _isInitialized
