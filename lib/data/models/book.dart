@@ -1,8 +1,8 @@
-/// Book category information from API
+/// API 返回的书籍分类信息
 class BookCategory {
-  final String shortName; // "录入" / "翻译" / "转载"
+  final String shortName; // "录入"/"翻译"/"转载"
   final String name; // "录入完成" / "翻译中" etc.
-  final String color; // Hex color from server
+  final String color; // 服务端返回的 Hex 颜色
 
   const BookCategory({
     required this.shortName,
@@ -41,9 +41,9 @@ class Book {
   });
 
   factory Book.fromJson(Map<dynamic, dynamic> json) {
-    // Helper to handle Key case sensitivity if needed, but SignalR MsgPack usually preserves exact keys.
-    // 'LastUpdatedAt' from Typescript ref says it might lose Date object and become string?
-    // Let's handle both.
+    // 辅助处理键大小写（SignalR MsgPack 通常保留）
+    // 'LastUpdatedAt' 可能丢失 Date 对象转为字符串
+    // 兼容处理
 
     DateTime parseDate(dynamic date) {
       if (date is String) {
@@ -52,7 +52,7 @@ class Book {
       return DateTime.now();
     }
 
-    // Parse category if present
+    // 解析分类
     BookCategory? category;
     if (json['Category'] is Map) {
       category = BookCategory.fromJson(json['Category']);
@@ -62,9 +62,7 @@ class Book {
       id: json['Id'] as int? ?? 0,
       title: json['Title'] as String? ?? 'Unknown',
       cover: json['Cover'] as String? ?? '',
-      author:
-          json['Author'] as String? ??
-          'Unknown', // Sometimes in 'User' object or root? BookInList has it.
+      author: json['Author'] as String? ?? 'Unknown', // 可能在 root 或 'User' 对象中
       lastUpdatedAt: parseDate(json['LastUpdatedAt']),
       userName: json['UserName'] as String?,
       level: json['Level'] as int?,
@@ -90,7 +88,7 @@ class Chapter {
 enum ShelfItemType { book, folder }
 
 class ShelfItem {
-  final dynamic id; // int for books, String for folders
+  final dynamic id; // int(书) 或 String(文件夹)
   final ShelfItemType type;
   final String title;
   final List<String> parents;

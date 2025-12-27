@@ -12,7 +12,7 @@ import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:palette_generator/palette_generator.dart';
 
-/// Shimmer loading effect widget
+/// 骨架屏加载效果组件
 class ShimmerBox extends StatefulWidget {
   final double width;
   final double height;
@@ -81,7 +81,7 @@ class _ShimmerBoxState extends State<ShimmerBox>
   }
 }
 
-/// Detailed book information response
+/// 书籍详情信息
 class BookInfo {
   final int id;
   final String title;
@@ -95,7 +95,7 @@ class BookInfo {
   final bool canEdit;
   final List<ChapterInfo> chapters;
   final UserInfo? user;
-  // Server-provided reading position (from GetBookInfo response)
+  // 服务端返回的阅读进度
   final ServerReadPosition? serverReadPosition;
 
   BookInfo({
@@ -122,7 +122,7 @@ class BookInfo {
             .toList() ??
         [];
 
-    // Parse ReadPosition from server response
+    // 解析服务端返回的阅读进度
     ServerReadPosition? readPos;
     final posData = json['ReadPosition'];
     if (posData != null && posData is Map) {
@@ -149,7 +149,7 @@ class BookInfo {
   }
 }
 
-/// Server-provided reading position
+/// 服务端阅读进度结构
 class ServerReadPosition {
   final int? chapterId;
   final String? position; // XPath or scroll position string
@@ -220,19 +220,19 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   final _bookMarkService = BookMarkService();
   final _cacheService = BookInfoCacheService();
 
-  // Local book mark status
+  // 本地标记状态
   BookMarkStatus _currentMark = BookMarkStatus.none;
 
-  // Static cache for extracted colors (shared across all instances)
-  // Key format: "bookId_dark" or "bookId_light"
+  // 颜色提取缓存（静态共享）
+  // 键格式："bookId_dark" 或 "bookId_light"
   static final Map<String, List<Color>> _colorCache = {};
-  // Static cache for ColorScheme (shared across all instances)
+  // ColorScheme 缓存（静态共享）
   static final Map<String, ColorScheme> _schemeCache = {};
 
-  // Track current brightness to detect theme changes
+  // 监听亮度变化以更新主题
   Brightness? _currentBrightness;
 
-  /// Clear all color caches (call when theme changes)
+  /// 清除所有颜色缓存
   static void clearColorCache() {
     _colorCache.clear();
     _schemeCache.clear();
@@ -250,11 +250,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   bool _coverLoadFailed = false;
   bool _colorsExtracted = false; // Track if we already extracted colors
 
-  // Dynamic ColorScheme based on cover image
+  // 基于封面的动态配色方案
   ColorScheme? _dynamicColorScheme;
 
-  /// Format DateTime to relative time string (dayjs-compatible thresholds)
-  /// @see https://day.js.org/docs/en/display/from-now#list-of-breakdown-range
+  /// 格式化相对时间（仿 dayjs）
   String _formatRelativeTime(DateTime dateTime) {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
@@ -295,20 +294,20 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   void initState() {
     super.initState();
 
-    // Try to restore cached colors immediately to prevent flash
+    // 尝试立即恢复缓存颜色以防闪烁
     _tryRestoreCachedColors();
 
     _loadBookInfo();
-    // Delay color extraction to avoid lag during page transition
-    // Hero animation ~400ms + safety margin = 550ms, then wait for 2 frames
+    // 延迟提取颜色以避免转场卡顿
+    // Hero 动画约 400ms + 缓冲 = 550ms
     if (widget.initialCoverUrl != null && widget.initialCoverUrl!.isNotEmpty) {
-      // Wait 550ms for Hero animation to complete, then use double PostFrameCallback
-      // to ensure we don't interfere with any remaining layout/paint operations
+      // 等待动画结束，使用双重 PostFrameCallback
+      // 确保不影响后续布局绘制
       Future.delayed(const Duration(milliseconds: 550), () {
         if (mounted && !_colorsExtracted) {
           SchedulerBinding.instance.addPostFrameCallback((_) {
             if (mounted && !_colorsExtracted) {
-              // Extra frame callback for additional safety during complex layouts
+              // 额外帧回调确保安全
               SchedulerBinding.instance.addPostFrameCallback((_) {
                 if (mounted && !_colorsExtracted) {
                   final isDark =
@@ -327,7 +326,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final brightness = Theme.of(context).brightness;
-    // Detect theme change and re-extract colors
+    // 检测主题变化并重新提取颜色
     if (_currentBrightness != null && _currentBrightness != brightness) {
       _logger.info(
         'Theme changed from $_currentBrightness to $brightness, re-extracting colors',
@@ -345,10 +344,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     _currentBrightness = brightness;
   }
 
-  /// Try to restore cached colors immediately (synchronously) to prevent flash
+  /// 尝试同步恢复缓存颜色
   void _tryRestoreCachedColors() {
-    // We need to check both light and dark theme cache keys
-    // Since we don't have context here yet, try to get from platform brightness
+    // 检查对应主题的缓存
+    // 无 Context 时尝试使用平台亮度
     final brightness =
         WidgetsBinding.instance.platformDispatcher.platformBrightness;
     final isDark = brightness == Brightness.dark;
@@ -362,18 +361,18 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// Adjust color based on theme brightness for premium feel
+  /// 根据主题调整颜色以提升质感
   Color _adjustColorForTheme(Color color, bool isDark) {
     final hsl = HSLColor.fromColor(color);
     if (isDark) {
-      // Dark mode: significantly reduce lightness for darker backgrounds
-      // Range 0.05-0.25 ensures colors are dark but still distinguishable
+      // 深色模式：显著降低亮度
+      // 保持 0.05-0.25 区间
       return hsl
           .withLightness((hsl.lightness * 0.4).clamp(0.05, 0.25))
           .withSaturation((hsl.saturation * 1.1).clamp(0.0, 1.0))
           .toColor();
     } else {
-      // Light mode: increase lightness, soften saturation
+      // 浅色模式：提升亮度，柔化饱和度
       return hsl
           .withLightness((hsl.lightness * 0.8 + 0.3).clamp(0.5, 0.85))
           .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.8))
@@ -381,18 +380,18 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// Extract dominant colors from cover image for gradient background
+  /// 从封面提取主色调生成渐变背景
   Future<void> _extractColors(String coverUrl, bool isDark) async {
     if (coverUrl.isEmpty) {
       setState(() => _coverLoadFailed = true);
       return;
     }
 
-    // Check cache first - use theme-specific cache key
+    // 优先检查缓存
     final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
     if (_colorCache.containsKey(cacheKey) &&
         _schemeCache.containsKey(cacheKey)) {
-      // Use cached adjusted colors and ColorScheme directly
+      // 直接使用缓存颜色
       _gradientColors = _colorCache[cacheKey]!;
       _dynamicColorScheme = _schemeCache[cacheKey]!;
       _colorsExtracted = true;
@@ -401,7 +400,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
 
     try {
-      // Extract colors from cover image
+      // 提取封面颜色
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         CachedNetworkImageProvider(coverUrl),
         size: const Size(50, 70), // Match cover aspect ratio (5:7)
@@ -410,19 +409,19 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
       if (!mounted) return;
 
-      // Get only top 2 colors for smoother gradient (avoids harsh lines)
-      // Primary: dominant first (by area coverage), fallback to vibrant
+      // 提取前两种颜色以获得平滑渐变
+      // 主色：优先使用主导色，降级为鲜艳色
       final primary =
           paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color;
 
-      // Secondary: muted or dark muted (fallback to light muted)
+      // 次色：柔和或深柔和色
       final secondary =
           paletteGenerator.mutedColor?.color ??
           paletteGenerator.darkMutedColor?.color ??
           paletteGenerator.lightMutedColor?.color;
 
-      // Build gradient colors: primary -> middle (interpolated) -> secondary
+      // 构建渐变：主色 -> 中间插值 -> 次色
       Color color1;
       Color color2;
 
@@ -431,7 +430,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         color2 = secondary;
       } else if (primary != null) {
         color1 = primary;
-        // Generate second color by darkening/lightening
+        // 生成第二种颜色
         color2 =
             Color.lerp(primary, isDark ? Colors.black : Colors.white, 0.4)!;
       } else if (secondary != null) {
@@ -443,22 +442,22 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         return;
       }
 
-      // Adjust colors based on theme
+      // 根据主题调整颜色
       color1 = _adjustColorForTheme(color1, isDark);
       color2 = _adjustColorForTheme(color2, isDark);
 
-      // Generate middle color by interpolation for smoother gradient
+      // 插值生成中间色
       final middleColor = Color.lerp(color1, color2, 0.5)!;
 
-      // Final gradient: [color1, middle, color2] for smooth 3-stop gradient
+      // 最终 3 色平滑渐变
       final adjustedColors = [color1, middleColor, color2];
 
-      // Cache the adjusted colors with theme-specific key
+      // 缓存调整后的颜色
       _colorCache[cacheKey] = List.from(adjustedColors);
 
-      // Generate dynamic ColorScheme using the SAME primary color as gradient
-      // Use color1 (already adjusted for theme) to ensure consistency
-      // between background gradient and component colors
+      // 使用相同主色生成 ColorScheme
+      // 保持与背景渐变一致
+      // 确保组件颜色协调
       final seedColor = color1;
 
       final dynamicScheme = ColorScheme.fromSeed(
@@ -466,7 +465,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         brightness: isDark ? Brightness.dark : Brightness.light,
       );
 
-      // Cache the ColorScheme
+      // 缓存配色方案
       _schemeCache[cacheKey] = dynamicScheme;
 
       if (mounted) {
@@ -485,24 +484,24 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   Future<void> _loadBookInfo({bool forceRefresh = false}) async {
     final settings = ref.read(settingsProvider);
 
-    // Try to use cache if enabled and not forcing refresh
+    // 尝试使用缓存
     if (!forceRefresh && settings.bookDetailCacheEnabled) {
       final cached = _cacheService.get(widget.bookId);
       if (cached != null) {
-        // Use cached data and only refresh reading progress
+        // 使用缓存数据并刷新进度
         _bookInfo = cached;
         await _refreshReadingProgress();
         if (mounted && _loading) {
           setState(() => _loading = false);
         }
-        // Extract colors if needed
+        // 必要时提取颜色
         if (mounted && !_colorsExtracted && _gradientColors == null) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
           _extractColors(cached.cover, isDark);
         }
 
-        // Fetch fresh data from server in background to sync reading progress
-        // This ensures multi-device sync works even when using cache
+        // 后台同步最新数据
+        // 确保多端同步生效
         _fetchServerDataInBackground();
         return;
       }
@@ -516,16 +515,15 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     try {
       final info = await _bookService.getBookInfo(widget.bookId);
 
-      // Try to get position from both sources
+      // 尝试从双源获取进度
       ReadPosition? position;
 
-      // 1. Try server position from BookInfo response (embedded in GetBookInfo)
+      // 1. 尝试使用服务端返回的进度
       if (info.serverReadPosition != null &&
           info.serverReadPosition!.chapterId != null) {
         final serverChapterId = info.serverReadPosition!.chapterId!;
-        final positionStr = info.serverReadPosition!.position ?? '';
 
-        // Find sortNum from chapter list (chapters are sorted by sortNum)
+        // 在章节列表中查找 sortNum
         int? sortNum;
         double scrollPosition = 0.0;
 
@@ -536,10 +534,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           }
         }
 
-        // Parse scroll percentage from our custom format
-        if (positionStr.startsWith('scroll:')) {
-          scrollPosition = double.tryParse(positionStr.substring(7)) ?? 0.0;
-        }
+        // 忽略服务端章节内位置（格式不兼容），仅同步章节ID
+        scrollPosition = 0.0;
 
         if (sortNum != null) {
           position = ReadPosition(
@@ -554,21 +550,41 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         }
       }
 
-      // 2. Fallback to local position
-      if (position == null) {
-        position = await _progressService.getLocalScrollPosition(widget.bookId);
+      // 2. 获取本地进度
+      final localPosition = await _progressService.getLocalScrollPosition(
+        widget.bookId,
+      );
+
+      // 3. 进度决策：仅当服务端章节 > 本地章节时使用服务端
+      if (position != null) {
+        if (localPosition != null &&
+            position.sortNum == localPosition.sortNum) {
+          // 章节相同，优先使用本地（保留章节内位置）
+          position = localPosition;
+          _logger.info(
+            'Using local position (same chapter): chapter ${position.sortNum}',
+          );
+        } else {
+          // 章节不同（无论前后），使用服务端（位置归零）
+          _logger.info(
+            'Using server position (diff chapter): chapter ${position.sortNum}',
+          );
+        }
+      } else {
+        // 无服务端进度，使用本地
+        position = localPosition;
         if (position != null) {
           _logger.info('Using local position: chapter ${position.sortNum}');
         }
       }
 
-      // Ensure shelf is loaded for correct status
+      // 确保加载书架状态
       await _userService.ensureInitialized();
 
       if (mounted) {
-        // Check theme for color adjustment
+        // 检查主题以调整颜色
         final isDark = Theme.of(context).brightness == Brightness.dark;
-        // Load local book mark status
+        // 加载本地标记
         final mark = await _bookMarkService.getBookMark(widget.bookId);
         setState(() {
           _bookInfo = info;
@@ -577,11 +593,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           _currentMark = mark;
           _loading = false;
         });
-        // Only extract colors if not already done from initial cover
+        // 若未提取则提取颜色
         if (!_colorsExtracted && _gradientColors == null) {
           _extractColors(info.cover, isDark);
         }
-        // Cache the book info if caching is enabled
+        // 缓存书籍信息
         if (settings.bookDetailCacheEnabled) {
           _cacheService.set(widget.bookId, info);
         }
@@ -597,16 +613,16 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// Refresh only reading progress and related state (no network request for book info)
+  /// 仅刷新阅读进度（不请求书籍详情）
   Future<void> _refreshReadingProgress() async {
     try {
-      // Get local reading position
+      // 获取本地进度
       final position = await _progressService.getLocalScrollPosition(
         widget.bookId,
       );
-      // Get local book mark status
+      // 获取本地标记
       final mark = await _bookMarkService.getBookMark(widget.bookId);
-      // Check shelf status
+      // 检查书架状态
       await _userService.ensureInitialized();
 
       if (mounted) {
@@ -621,8 +637,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// Fetch fresh data from server in background and selectively update changes
-  /// Compares all book detail elements and only updates what has changed
+  /// 后台拉取数据并选择性更新
+  /// 对比详情字段，仅更新变更部分
   Future<void> _fetchServerDataInBackground() async {
     try {
       final info = await _bookService.getBookInfo(widget.bookId);
@@ -632,7 +648,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       final cached = _bookInfo!;
       bool needsUpdate = false;
 
-      // Compare book info fields
+      // 对比书籍信息
       final bool infoChanged =
           cached.title != info.title ||
           cached.author != info.author ||
@@ -649,12 +665,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         needsUpdate = true;
       }
 
-      // Extract server reading position
+      // 提取服务端进度
       ReadPosition? serverPosition;
       if (info.serverReadPosition != null &&
           info.serverReadPosition!.chapterId != null) {
         final serverChapterId = info.serverReadPosition!.chapterId!;
-        final positionStr = info.serverReadPosition!.position ?? '';
 
         int? sortNum;
         double scrollPosition = 0.0;
@@ -666,9 +681,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           }
         }
 
-        if (positionStr.startsWith('scroll:')) {
-          scrollPosition = double.tryParse(positionStr.substring(7)) ?? 0.0;
-        }
+        // 忽略服务端章节内位置（格式不兼容），仅同步章节ID
+        scrollPosition = 0.0;
 
         if (sortNum != null) {
           serverPosition = ReadPosition(
@@ -680,18 +694,22 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         }
       }
 
-      // Compare reading position (only chapter number)
+      // 对比阅读进度（仅章节号）
       bool positionChanged = false;
       if (serverPosition != null) {
-        final currentPos = _readPosition;
+        final currentPos = await _progressService.getLocalScrollPosition(
+          widget.bookId,
+        );
+
+        // 只要章节不同（无论前后）就更新，确保多端同步
         positionChanged =
-            currentPos == null || serverPosition.sortNum > currentPos.sortNum;
+            currentPos == null || serverPosition.sortNum != currentPos.sortNum;
 
         if (positionChanged) {
           _logger.info(
             'Background sync: reading position updated to ch${serverPosition.sortNum}',
           );
-          // Save to local storage
+          // 保存到本地
           await _progressService.saveLocalScrollPosition(
             bookId: widget.bookId,
             chapterId: serverPosition.chapterId,
@@ -701,7 +719,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         }
       }
 
-      // Apply updates if anything changed
+      // 应用变更
       if (mounted && (needsUpdate || positionChanged)) {
         setState(() {
           if (needsUpdate) {
@@ -713,19 +731,19 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         });
       }
 
-      // Update cache with fresh data
+      // 更新缓存
       final settings = ref.read(settingsProvider);
       if (settings.bookDetailCacheEnabled) {
         _cacheService.set(widget.bookId, info);
       }
     } catch (e) {
       _logger.warning('Background sync failed: $e');
-      // Silently ignore errors - we already have cached data
+      // 忽略错误（已有缓存）
     }
   }
 
   void _startReading({int sortNum = 1}) {
-    // Get cover URL for dynamic color in reader
+    // 获取封面 URL 用于阅读器动态色
     final coverUrl =
         widget.initialCoverUrl?.isNotEmpty == true
             ? widget.initialCoverUrl!
@@ -744,7 +762,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           ),
         )
         .then((_) {
-          // Only refresh reading position when returning from reader (not full reload)
+          // 从阅读器返回时仅刷新进度
           if (mounted) {
             _refreshReadingProgress();
           }
@@ -792,7 +810,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// Get the icon for a mark status
+  /// 获取标记状态图标
   IconData _getMarkIcon(BookMarkStatus status) {
     switch (status) {
       case BookMarkStatus.none:
@@ -806,9 +824,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// Show bottom sheet to mark book status
+  /// 显示标记状态底部菜单
   void _showMarkBookSheet() {
-    // Check if book is in shelf first
+    // 检查是否已加入书架
     if (!_isInShelf) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -948,7 +966,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             ? baseColorScheme
             : _dynamicColorScheme!;
 
-    // Show preview with initial data while loading
+    // 加载时显示预览
     if (_loading &&
         (widget.initialCoverUrl != null || widget.initialTitle != null)) {
       return _buildThemedScaffold(
@@ -971,28 +989,28 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
-  /// Wrap content with animated Theme override when dynamic ColorScheme is available
-  /// Uses AnimatedTheme for smooth color transitions (only when extracting colors)
-  /// Skips animation if colors were restored from cache to prevent flash
-  /// Skips dynamic ColorScheme entirely when OLED mode is enabled
+  /// 动态配色可用时使用动画过渡
+  /// 使用 AnimatedTheme 平滑过渡
+  /// 缓存恢复时跳过动画防闪烁
+  /// OLED 模式禁用动态配色
   Widget _buildThemedScaffold(
     BuildContext context,
     ColorScheme colorScheme,
     Widget body, {
     bool isOled = false,
   }) {
-    // Skip animation if colors were already extracted (from cache)
-    // This prevents the flash when navigating to a cached book
+    // 已提取（缓存）则跳过动画
+    // 防止导航闪烁
     final shouldAnimate = !_colorsExtracted || _dynamicColorScheme == null;
 
-    // In OLED mode, always use system theme (no dynamic colors)
+    // OLED 模式强制使用系统主题
     final effectiveColorScheme =
         isOled
             ? Theme.of(context).colorScheme
             : (_dynamicColorScheme ?? Theme.of(context).colorScheme);
 
     return AnimatedTheme(
-      // Use longer duration (600ms) for smoother, more elegant fade-in
+      // 600ms 平滑淡入时长
       duration:
           shouldAnimate ? const Duration(milliseconds: 600) : Duration.zero,
       curve: Curves.easeInOutCubic,
@@ -1020,7 +1038,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Gradient background from extracted colors or loading placeholder
+                // 渐变背景或加载占位
                 if (!isOled && _gradientColors != null)
                   Container(
                     decoration: BoxDecoration(
@@ -1060,7 +1078,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                     ),
                   ),
                 ),
-                // Cover and title preview
+                // 封面标题预览
                 Positioned(
                   left: 20,
                   right: 20,
@@ -1139,7 +1157,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             const SizedBox(height: 8),
-                            // Shimmer skeleton for loading author
+                            // 作者加载骨架
                             ShimmerBox(width: 80, height: 16, borderRadius: 4),
                           ],
                         ),
@@ -1151,12 +1169,12 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             ),
           ),
         ),
-        // Shimmer skeleton for content - simplified layout
+        // 内容骨架屏
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              // Meta chips skeleton: height=26, borderRadius=8
+              // 元数据 Chips 骨架
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -1167,7 +1185,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 ],
               ),
               const SizedBox(height: 20),
-              // Action buttons: bookmark 56x56, read button height=56
+              // 操作按钮骨架
               Row(
                 children: [
                   ShimmerBox(width: 56, height: 56, borderRadius: 16),
@@ -1182,11 +1200,11 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 ],
               ),
               const SizedBox(height: 24),
-              // Introduction: single block for entire section
+              // 简介骨架
               ShimmerBox(width: double.infinity, height: 80, borderRadius: 16),
               const SizedBox(height: 24),
-              // Unified block for Update Info + Chapter Header + Chapter List
-              // Matches the visual weight of the lower section
+              // 列表区域骨架
+              // 匹配下方视觉权重
               ShimmerBox(width: double.infinity, height: 300, borderRadius: 16),
             ]),
           ),
@@ -1218,7 +1236,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     final settings = ref.watch(settingsProvider);
     final isOled = settings.oledBlack;
     final book = _bookInfo!;
-    // Use initial cover URL if same domain to leverage cache
+    // 复用封面 URL 利用缓存
     final coverUrl =
         widget.initialCoverUrl?.isNotEmpty == true
             ? widget.initialCoverUrl!
@@ -1226,7 +1244,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     return CustomScrollView(
       slivers: [
-        // Modern header with blurred background and floating cover
+        // 现代风格头部（模糊背景+浮动封面）
         SliverAppBar(
           expandedHeight: 280,
           pinned: true,
@@ -1239,7 +1257,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
             background: Stack(
               fit: StackFit.expand,
               children: [
-                // Gradient background from extracted colors or fallback
+                // 提取色渐变背景或降级
                 if (!isOled && _gradientColors != null && !_coverLoadFailed)
                   Container(
                     decoration: BoxDecoration(
@@ -1285,7 +1303,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                     ),
                   )
                 else if (!isOled && (_coverLoadFailed || book.cover.isEmpty))
-                  // Fallback: solid gray based on theme
+                  // 降级：主题纯色
                   Container(
                     color:
                         colorScheme.brightness == Brightness.dark
@@ -1293,14 +1311,14 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                             : const Color(0xFFE8E8E8),
                   )
                 else
-                  // Loading state: neutral placeholder (no cover image flash)
+                  // 加载态：中性占位
                   Container(
                     color:
                         colorScheme.brightness == Brightness.dark
                             ? (isOled ? Colors.black : const Color(0xFF1E1E1E))
                             : const Color(0xFFF0F0F0),
                   ),
-                // Gradient overlay for smooth transition to content
+                // 平滑过渡渐变遮罩
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1323,8 +1341,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                   ),
                 ),
 
-                // Removed fade overlay to ensure sharp contrast for rounded content card
-                // Cover and title overlay
+                // 移除淡出层以增强对比
+                // 封面标题层
                 Positioned(
                   left: 20,
                   right: 20,
@@ -1332,7 +1350,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      // Floating cover card
+                      // 浮动封面卡片
                       Hero(
                         tag: widget.heroTag ?? 'cover_${book.id}',
                         child: Container(
@@ -1387,7 +1405,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                         ),
                       ),
                       const SizedBox(width: 16),
-                      // Title and author
+                      // 标题与作者
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1422,14 +1440,14 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           ),
         ),
 
-        // Content
+        // 内容区域
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Stats row - minimalist chips
+                // 数据栏（极简 Chips）
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -1450,7 +1468,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                       '${book.chapters.length} 章',
                       colorScheme,
                     ),
-                    // Show mark status chip if marked
+                    // 显示标记状态
                     if (_currentMark != BookMarkStatus.none)
                       _buildMetaChip(
                         _getMarkIcon(_currentMark),
@@ -1461,10 +1479,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 ),
                 const SizedBox(height: 20),
 
-                // Action buttons - full width, modern style
+                // 全宽现代风格操作按钮
                 Row(
                   children: [
-                    // Bookmark toggle
+                    // 书架/标记开关
                     _shelfLoading
                         ? Container(
                           width: 56,
@@ -1508,7 +1526,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                           ),
                         ),
                     const SizedBox(width: 12),
-                    // Read button
+                    // 阅读按钮
                     Expanded(
                       child: SizedBox(
                         height: 56,
@@ -1528,7 +1546,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                 child: Text(
                                   _readPosition != null
                                       ? (() {
-                                        // Find chapter title by chapterId
+                                        // 根据 ID 查找章节标题
                                         final chapter = book.chapters
                                             .cast<ChapterInfo?>()
                                             .firstWhere(
@@ -1541,15 +1559,15 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                             chapter.title.isNotEmpty) {
                                           String title = chapter.title;
 
-                                          // Apply cleaning if enabled in settings
+                                          // 若开启则清洗标题
                                           final settings = ref.read(
                                             settingsProvider,
                                           );
                                           if (settings.cleanChapterTitle) {
-                                            // Smart hybrid regex:
-                                            // Handles 【第一话】... or non-English leading identifier
-                                            // Also handles 『「〈 as delimiters
-                                            // Leaves pure English titles unchanged
+                                            // 智能混合正则：
+                                            // 处理 【第一话】 或非英文前缀
+                                            // 处理 『「〈 分隔符
+                                            // 保留纯英文标题
                                             final regex = RegExp(
                                               r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
                                             );
@@ -1557,7 +1575,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                               title,
                                             );
                                             if (match != null) {
-                                              // Combine group 1 and group 2 (one will be non-null)
+                                              // 合并分组
                                               final extracted =
                                                   (match.group(1) ?? '') +
                                                   (match.group(2) ?? '');
@@ -1567,7 +1585,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                             }
                                           }
 
-                                          // Truncate long titles
+                                          // 截断长标题
                                           if (title.length > 15) {
                                             title =
                                                 '${title.substring(0, 15)}...';
@@ -1594,7 +1612,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 ),
                 const SizedBox(height: 24),
 
-                // Introduction - expandable
+                // 简介（可展开）
                 if (book.introduction.isNotEmpty) ...[
                   _buildSectionTitle('简介'),
                   const SizedBox(height: 8),

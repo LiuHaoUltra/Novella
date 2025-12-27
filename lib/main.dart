@@ -27,7 +27,7 @@ ExternalLibrary _loadLibrary() {
   }
 }
 
-// === Global state for RustLib initialization ===
+// === RustLib 初始化全局状态 ===
 bool rustLibInitialized = false;
 String? rustLibInitError;
 
@@ -41,7 +41,7 @@ void main() async {
   );
 
   try {
-    // Initialize Rust FFI for WOFF2 font conversion
+    // 初始化 Rust FFI 以进行 WOFF2 字体转换
     developer.log('Initializing RustLib...', name: 'Flutter');
 
     // === 关键修改：手动指定加载方式 ===
@@ -65,7 +65,7 @@ void main() async {
     WindowOptions windowOptions = const WindowOptions(
       size: Size(450, 850),
       minimumSize: Size(400, 800),
-      maximumSize: Size(500, 1000), // Constraint for prototype
+      maximumSize: Size(500, 1000), // 原型窗口大小限制
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
@@ -144,7 +144,7 @@ class _MyAppState extends ConsumerState<MyApp> {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        // Tech-simplicity: refined typography
+        // 科技简约风：优化排版
         textTheme: const TextTheme(
           displayLarge: TextStyle(letterSpacing: -1.0),
           displayMedium: TextStyle(letterSpacing: -0.5),

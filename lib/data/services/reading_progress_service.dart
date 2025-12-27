@@ -3,12 +3,12 @@ import 'package:logging/logging.dart';
 import 'package:novella/core/network/signalr_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Local reading position data
+/// 本地阅读位置数据
 class ReadPosition {
   final int bookId;
   final int chapterId;
   final int sortNum;
-  final double scrollPosition; // 0.0 to 1.0 representing scroll percentage
+  final double scrollPosition; // 0.0-1.0 滚动百分比
 
   ReadPosition({
     required this.bookId,
@@ -34,8 +34,8 @@ class ReadPosition {
   }
 }
 
-/// Service for managing reading progress
-/// Syncs with server and caches locally
+/// 阅读进度管理服务
+/// 同步服务端并本地缓存
 class ReadingProgressService {
   static final Logger _logger = Logger('ReadingProgressService');
   static final ReadingProgressService _instance =
@@ -45,21 +45,20 @@ class ReadingProgressService {
   factory ReadingProgressService() => _instance;
   ReadingProgressService._internal();
 
-  /// Save reading position to server
-  /// Reference: saveReadPosition in services/book/index.ts
+  /// 保存阅读位置到服务器
+  /// 参考 services/book/index.ts
   Future<void> saveReadPosition({
     required int bookId,
     required int chapterId,
-    required String xPath, // XPath position for precise scroll restoration
+    required String xPath, // XPath 精确位置
   }) async {
     try {
-      // Web client calls: invoke('SaveReadPosition', params, {UseGzip: true})
-      // MUST include options as second arg!
+      // Web 端调用包含选项，必须包含！
       await _signalRService.invoke(
         'SaveReadPosition',
         args: [
           {'Bid': bookId, 'Cid': chapterId, 'XPath': xPath},
-          {'UseGzip': true}, // Options - REQUIRED!
+          {'UseGzip': true}, // 选项（必须！）
         ],
       );
       _logger.info(
@@ -67,23 +66,23 @@ class ReadingProgressService {
       );
     } catch (e) {
       _logger.warning('Failed to save position to server: $e');
-      // Still save locally even if server fails
+      // 服务端失败仍保存本地
     }
 
-    // Save locally as backup
+    // 本地备份
     await _saveLocalPosition(bookId, chapterId, xPath);
   }
 
-  /// Get reading position - LOCAL ONLY
-  /// Note: GetReadPosition RPC does not exist on the server.
-  /// Server position is embedded in GetBookInfo response as ReadPosition.
-  /// This method only returns locally cached position.
+  /// 获取阅读位置（仅本地）
+  /// 注：服务端无 GetReadPosition 接口。
+  /// 服务端位置包含在 GetBookInfo 响应中。
+  /// 此方法仅返回本地缓存。
   Future<Map<String, dynamic>?> getReadPosition(int bookId) async {
-    // Just return local cache - server position comes from GetBookInfo
+    // 仅返回本地缓存
     return await _getLocalPosition(bookId);
   }
 
-  /// Save scroll percentage locally (simpler than XPath for Flutter)
+  /// 本地保存滚动百分比
   Future<void> saveLocalScrollPosition({
     required int bookId,
     required int chapterId,
@@ -102,7 +101,7 @@ class ReadingProgressService {
 
     final data =
         '${position.chapterId}|${position.sortNum}|${position.scrollPosition}';
-    // Store as simple string for SharedPreferences
+    // 简单字符串存储
     await prefs.setString(key, data);
 
     developer.log('SAVED: key=$key, data=$data', name: 'POSITION');
@@ -112,7 +111,7 @@ class ReadingProgressService {
     );
   }
 
-  /// Get local scroll position
+  /// 获取本地滚动位置
   Future<ReadPosition?> getLocalScrollPosition(int bookId) async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'read_pos_$bookId';
@@ -147,7 +146,7 @@ class ReadingProgressService {
     return null;
   }
 
-  /// Private: Save XPath-based position locally
+  /// 私有：本地保存 XPath 位置
   Future<void> _saveLocalPosition(
     int bookId,
     int chapterId,
@@ -158,7 +157,7 @@ class ReadingProgressService {
     await prefs.setString(key, '$chapterId|$xPath');
   }
 
-  /// Private: Get XPath-based position from local cache
+  /// 私有：获取本地 XPath 位置
   Future<Map<String, dynamic>?> _getLocalPosition(int bookId) async {
     final prefs = await SharedPreferences.getInstance();
     final key = 'read_xpath_$bookId';
@@ -170,7 +169,7 @@ class ReadingProgressService {
     if (parts.length >= 2) {
       return {
         'chapterId': int.tryParse(parts[0]) ?? 0,
-        'xPath': parts.sublist(1).join('|'), // XPath may contain |
+        'xPath': parts.sublist(1).join('|'), // XPath 可能包含 |
       };
     }
     return null;

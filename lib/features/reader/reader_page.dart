@@ -17,7 +17,7 @@ class ReaderPage extends ConsumerStatefulWidget {
   final int bid;
   final int sortNum;
   final int totalChapters;
-  final String? coverUrl; // Optional cover URL for dynamic color
+  final String? coverUrl; // 封面 URL（用于动态取色）
 
   const ReaderPage({
     super.key,
@@ -47,15 +47,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   bool _initialScrollDone = false;
   bool _barsVisible = true;
 
-  // Dynamic ColorScheme based on cover image
+  // 基于封面的动态配色
   ColorScheme? _dynamicColorScheme;
 
-  // Debounce timer for scroll position saving
+  // 滚动保存防抖计时器
   Timer? _savePositionTimer;
-  // Cache last position for synchronous save on dispose
+  // 缓存位置用于销毁时同步保存
   double _lastScrollPercent = 0.0;
 
-  // Static cache for ColorScheme (shared across all reader instances)
+  // ColorScheme 静态缓存
   static final Map<String, ColorScheme> _schemeCache = {};
 
   @override
@@ -64,13 +64,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     WidgetsBinding.instance.addObserver(this);
     _scrollController.addListener(_onScroll);
     _loadChapter(widget.bid, widget.sortNum);
-    // Start reading time tracking
+    // 开始记录阅读时长
     _readingTimeService.startSession();
-    // Extract colors from cover for dynamic theme
+    // 提取封面颜色用于动态主题
     _extractColors();
   }
 
-  /// Extract colors from cover image and generate dynamic ColorScheme
+  /// 提取封面颜色生成动态配色
   Future<void> _extractColors() async {
     if (widget.coverUrl == null || widget.coverUrl!.isEmpty) return;
 
@@ -79,7 +79,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final isDark = brightness == Brightness.dark;
     final cacheKey = '${widget.bid}_${isDark ? 'dark' : 'light'}';
 
-    // Check cache first
+    // 优先检查缓存
     if (_schemeCache.containsKey(cacheKey)) {
       if (mounted) {
         setState(() {
@@ -96,7 +96,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         maximumColorCount: 3,
       );
 
-      // Use DOMINANT color first (by area coverage) for better cover representation
+      // 优先使用主导色（覆盖面积大）
       final seedColor =
           paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color ??
@@ -107,7 +107,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           seedColor: seedColor,
           brightness: isDark ? Brightness.dark : Brightness.light,
         );
-        // Cache the result
+        // 缓存结果
         _schemeCache[cacheKey] = scheme;
         setState(() {
           _dynamicColorScheme = scheme;
@@ -121,9 +121,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   @override
   void dispose() {
     _savePositionTimer?.cancel();
-    // End reading time tracking
+    // 结束阅读时长记录
     _readingTimeService.endSession();
-    // Save cached position synchronously before dispose
+    // 销毁前同步保存位置
     if (_chapter != null && _lastScrollPercent > 0) {
       developer.log(
         'DISPOSE: Saving cached position $_lastScrollPercent',
@@ -144,13 +144,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Save position and reading time when app goes to background
+    // 后台时保存位置和时长
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       _saveCurrentPosition();
       _readingTimeService.endSession();
     }
-    // Restart reading time tracking when returning to foreground
+    // 前台恢复记录时长
     if (state == AppLifecycleState.resumed) {
       _readingTimeService.startSession();
     }
@@ -161,19 +161,19 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
-    // Cache current scroll position for dispose
+    // 缓存当前位置用于销毁
     if (maxScroll > 0) {
       _lastScrollPercent = offset / maxScroll;
     }
 
-    // Auto show bars at top or bottom boundaries
+    // 边界自动显示菜单栏
     if ((offset <= 0 || offset >= maxScroll) && !_barsVisible) {
       setState(() {
         _barsVisible = true;
       });
     }
 
-    // Debounced position save (every 2 seconds of idle)
+    // 防抖保存（闲置 2 秒）
     _savePositionTimer?.cancel();
     _savePositionTimer = Timer(const Duration(seconds: 2), () {
       _saveCurrentPosition();
@@ -186,7 +186,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     });
   }
 
-  /// Save current scroll position (local + server sync)
+  /// 保存滚动进度（本地+服务端）
   Future<void> _saveCurrentPosition() async {
     if (_chapter == null || !_scrollController.hasClients) return;
 
@@ -194,7 +194,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final currentScroll = _scrollController.position.pixels;
     final scrollPercent = maxScroll > 0 ? currentScroll / maxScroll : 0.0;
 
-    // Save locally for fast restore
+    // 本地保存以便快速恢复
     await _progressService.saveLocalScrollPosition(
       bookId: widget.bid,
       chapterId: _chapter!.id,
@@ -202,9 +202,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       scrollPosition: scrollPercent,
     );
 
-    // Sync to server - use scroll percentage encoded in XPath format
-    // This allows backend to record which chapter user was reading
-    // Format: "scroll:{percentage}" so we can parse it back later
+    // 同步服务端（XPath 格式存储百分比）
+    // 记录用户所在章节
+    // 格式 "scroll:{percentage}"
     await _progressService.saveReadPosition(
       bookId: widget.bid,
       chapterId: _chapter!.id,
@@ -216,7 +216,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
-  /// Restore scroll position after content loads
+  /// 内容加载后恢复进度
   Future<void> _restoreScrollPosition() async {
     if (_initialScrollDone) return;
     _initialScrollDone = true;
@@ -231,7 +231,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     if (position != null &&
         position.sortNum == _chapter?.sortNum &&
         _scrollController.hasClients) {
-      // Wait for layout to complete
+      // 等待布局完成
       await Future.delayed(const Duration(milliseconds: 100));
 
       if (_scrollController.hasClients) {
@@ -255,7 +255,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Future<void> _loadChapter(int bid, int sortNum) async {
     _logger.info('Requesting chapter with SortNum: $sortNum...');
 
-    // Save current position before loading new chapter
+    // 加载新章前保存当前进度
     if (_chapter != null) {
       await _saveCurrentPosition();
     }
@@ -269,7 +269,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     try {
       final settings = ref.read(settingsProvider);
 
-      // 1. Fetch Content
+      // 1. 获取内容
       final chapter = await _chapterService.getNovelContent(
         bid,
         sortNum,
@@ -277,7 +277,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       );
       _logger.info('Chapter loaded: ${chapter.title}');
 
-      // 2. Load obfuscation font with cache settings
+      // 2. 加载混淆字体（带缓存控制）
       String? family;
       if (chapter.fontUrl != null) {
         final settings = ref.read(settingsProvider);
@@ -298,13 +298,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           _loading = false;
         });
 
-        // Restore scroll position after build
+        // 构建后恢复进度
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _restoreScrollPosition();
 
-          // Match Web behavior: save position shortly after chapter loads
-          // Web uses IntersectionObserver with 300ms debounce
-          // We use 500ms to ensure scroll restore completes first
+          // 仿 Web：加载后短暂延时保存进度
+          // Web 使用 300ms 防抖
+          // 此处用 500ms 确保跳转完成
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted && _chapter != null) {
               _saveCurrentPosition();
@@ -350,7 +350,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     Widget content = Scaffold(
       body: Stack(
         children: [
-          // 1. Main Content Layer
+          // 1. 主要内容层
           Positioned.fill(
             child: GestureDetector(
               onTap: _toggleBars,
@@ -363,7 +363,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             ),
           ),
 
-          // 2. Top Bar (AppBar replacement)
+          // 2. 顶部栏
           AnimatedPositioned(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
@@ -376,7 +376,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             child: _buildTopBar(context),
           ),
 
-          // 3. Bottom Bar (Navigation)
+          // 3. 底部导航栏
           AnimatedPositioned(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
@@ -387,13 +387,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             child: _buildBottomBar(context, settings),
           ),
 
-          // 4. Gradient Blur Overlay
+          // 4. 渐变模糊遮罩
           _buildBlurOverlay(context),
         ],
       ),
     );
 
-    // Use AnimatedTheme for smooth color transitions
+    // AnimatedTheme 平滑过渡颜色
     return AnimatedTheme(
       duration: const Duration(milliseconds: 400),
       curve: Curves.easeOutCubic,
@@ -409,10 +409,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
         16.0,
-        MediaQuery.of(context).padding.top +
-            20, // Initial padding for status bar + breathing room
+        MediaQuery.of(context).padding.top + 20, // 状态栏边距+留白
         16.0,
-        // Add extra padding at bottom for navigation bar
+        // 底部导航栏留白
         80.0 + MediaQuery.of(context).padding.bottom,
       ),
       child: HtmlWidget(
@@ -454,7 +453,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   Widget _buildBottomBar(BuildContext context, AppSettings settings) {
-    // Safety check for safe area to prevent glitches
+    // 安全区域检查防止抖动
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -472,7 +471,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Prev Button
+          // 上一章按钮
           Expanded(
             child: TextButton.icon(
               onPressed:
@@ -495,7 +494,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               ),
             ),
 
-          // Next Button
+          // 下一章按钮
           Expanded(
             child: TextButton.icon(
               onPressed:
@@ -512,8 +511,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   }
 
   Widget _buildBlurOverlay(BuildContext context) {
-    // Height: Status bar + a bit more (e.g., 20)
-    // Masked with gradient to fade out
+    // 高度：状态栏 + 20
+    // 渐变淡出遮罩
     final double height = MediaQuery.of(context).padding.top + 30;
 
     return Positioned(
@@ -522,27 +521,21 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       right: 0,
       height: height,
       child: IgnorePointer(
-        // Allow touches to pass through
+        // 允许点击穿透
         child: ShaderMask(
           shaderCallback: (rect) {
             return const LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [Colors.black, Colors.black, Colors.transparent],
-              stops: [
-                0.0,
-                0.6,
-                1.0,
-              ], // Fade out starts at 60% of height (just below status bar)
+              stops: [0.0, 0.6, 1.0], // 60% 高度开始淡出
             ).createShader(rect);
           },
           blendMode: BlendMode.dstIn,
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
-              color:
-                  Colors
-                      .transparent, // Needed for BackdropFilter to catch something
+              color: Colors.transparent, // BackdropFilter 必需
             ),
           ),
         ),

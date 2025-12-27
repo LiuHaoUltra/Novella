@@ -1,9 +1,9 @@
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service for tracking local reading time.
-/// Stores daily reading minutes in SharedPreferences.
-/// Does not sync with cloud - purely local statistics.
+/// 本地阅读时长追踪服务
+/// 存储每日阅读分钟数
+/// 不云同步 - 纯本地统计
 class ReadingTimeService {
   static final Logger _logger = Logger('ReadingTimeService');
   static final ReadingTimeService _instance = ReadingTimeService._internal();
@@ -11,32 +11,32 @@ class ReadingTimeService {
   factory ReadingTimeService() => _instance;
   ReadingTimeService._internal();
 
-  // Key for storing session start timestamp
+  // 会话开始时间键
   static const _sessionStartKey = 'reading_session_start';
-  // Prefix for daily reading time keys
+  // 每日时长键前缀
   static const _dailyTimePrefix = 'reading_time_';
-  // Keep data for 60 days
+  // 保留 60 天
   static const _maxDaysToKeep = 60;
 
-  // In-memory cache of session start time
+  // 会话开始时间内存缓存
   int? _sessionStartMs;
 
-  /// Start a reading session - records current timestamp.
-  /// Called when entering ReaderPage or returning from background.
+  /// 开始阅读会话
+  /// 进入阅读页或从后台返回时调用
   Future<void> startSession() async {
     _sessionStartMs = DateTime.now().millisecondsSinceEpoch;
 
-    // Also persist to SharedPreferences as backup
+    // 持久化备份
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_sessionStartKey, _sessionStartMs!);
 
     _logger.info('Reading session started at $_sessionStartMs');
   }
 
-  /// End a reading session - calculates duration and adds to daily total.
-  /// Called when leaving ReaderPage or going to background.
+  /// 结束会话 - 计算时长并累加
+  /// 离开阅读页或进入后台时调用
   Future<void> endSession() async {
-    // If no memory session, try checking disk for a lost session (crash recovery)
+    // 尝试恢复丢失会话（崩溃恢复）
     if (_sessionStartMs == null) {
       final prefs = await SharedPreferences.getInstance();
       _sessionStartMs = prefs.getInt(_sessionStartKey);
@@ -49,11 +49,10 @@ class ReadingTimeService {
 
     final endMs = DateTime.now().millisecondsSinceEpoch;
     final durationMs = endMs - _sessionStartMs!;
-    final durationMinutes = durationMs ~/ 60000; // Convert to minutes
+    final durationMinutes = durationMs ~/ 60000; // 转为分钟
 
-    // Only record if at least 1 minute and less than 12 hours (sanity check)
-    // If it's absurdly long (e.g. 5 days from a crash), we likely discard it or cap it.
-    // For now, let's discard if > 12 hours (720 min) assuming it was a mistake/crash.
+    // 仅记录 1分钟 - 12小时（合理性检查）
+    // 假设 > 12小时 为异常，丢弃
     if (durationMinutes >= 1 && durationMinutes < 720) {
       await _addMinutesToDay(DateTime.now(), durationMinutes);
       _logger.info('Reading session ended: $durationMinutes minutes recorded');
@@ -63,23 +62,14 @@ class ReadingTimeService {
       );
     }
 
-    // Clear session
+    // 清除会话
     _sessionStartMs = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionStartKey);
   }
 
-  /// Recover an interrupted session (e.g. after crash).
-  /// This should be called on app startup.
-  /// If a session was left open, we can't reliably know when it "ended".
-  /// The safest strategy is to DISCARD the old session to avoid adding 10 hours of reading time
-  /// just because the user opened the app the next day.
-  /// OR, we could cap it if it's within a reasonable window.
-  /// Given the requirement "ensure data not lost", the user might expect *some* recovery.
-  /// But "Time Stamp Difference" strategy fails if we don't have an "End" time.
-  ///
-  /// Decision: Simply clean up the stale flag so we don't think we are reading.
-  /// Real-time updates happen on lifecycle changes, so legitimate reading is likely saved.
+  /// 恢复中断会话（如崩溃后）。
+  /// 决定：清理陈旧标志。
   Future<void> recoverSession() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.containsKey(_sessionStartKey)) {
@@ -88,7 +78,7 @@ class ReadingTimeService {
     }
   }
 
-  /// Add minutes to a specific day's total.
+  /// 增加指定日期的分钟数
   Future<void> _addMinutesToDay(DateTime date, int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     final key = _keyForDate(date);
@@ -98,17 +88,17 @@ class ReadingTimeService {
 
     _logger.fine('Added $minutes min to $key (total: ${existing + minutes})');
 
-    // Cleanup old data periodically (1% chance per call)
+    // 定期清理旧数据（1%概率）
     if (DateTime.now().millisecond % 100 == 0) {
       await _cleanupOldData();
     }
   }
 
-  /// Get total reading minutes for the current week (Monday to Sunday).
+  /// 获取本周总阅读分钟数（周一至周日）
   Future<int> getWeeklyMinutes() async {
     final now = DateTime.now();
     // Calculate the start of the week (Monday)
-    final weekday = now.weekday; // 1 = Monday, 7 = Sunday
+    final weekday = now.weekday; // 1 = 周一, 7 = 周日
     final monday = DateTime(now.year, now.month, now.day - (weekday - 1));
 
     int total = 0;
@@ -116,7 +106,7 @@ class ReadingTimeService {
 
     for (int i = 0; i < 7; i++) {
       final day = monday.add(Duration(days: i));
-      if (day.isAfter(now)) break; // Don't count future days
+      if (day.isAfter(now)) break; // 不统计未来日期
 
       final key = _keyForDate(day);
       total += prefs.getInt(key) ?? 0;
@@ -126,7 +116,7 @@ class ReadingTimeService {
     return total;
   }
 
-  /// Get total reading minutes for the current month.
+  /// 获取本月总阅读分钟数
   Future<int> getMonthlyMinutes() async {
     final now = DateTime.now();
     final firstDayOfMonth = DateTime(now.year, now.month, 1);
@@ -134,7 +124,7 @@ class ReadingTimeService {
     int total = 0;
     final prefs = await SharedPreferences.getInstance();
 
-    // Iterate from first day of month to today
+    // 遍历本月至今
     var day = firstDayOfMonth;
     while (!day.isAfter(now)) {
       final key = _keyForDate(day);
@@ -146,14 +136,14 @@ class ReadingTimeService {
     return total;
   }
 
-  /// Generate storage key for a specific date.
+  /// 生成日期键
   String _keyForDate(DateTime date) {
     final dateStr =
         '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     return '$_dailyTimePrefix$dateStr';
   }
 
-  /// Remove reading time data older than 60 days.
+  /// 移除 60 天前的数据
   Future<void> _cleanupOldData() async {
     final prefs = await SharedPreferences.getInstance();
     final cutoffDate = DateTime.now().subtract(Duration(days: _maxDaysToKeep));
@@ -164,7 +154,7 @@ class ReadingTimeService {
     for (final key in allKeys) {
       if (!key.startsWith(_dailyTimePrefix)) continue;
 
-      // Parse date from key: reading_time_2025-12-20
+      // 解析日期
       final dateStr = key.substring(_dailyTimePrefix.length);
       try {
         final parts = dateStr.split('-');
@@ -190,6 +180,6 @@ class ReadingTimeService {
     }
   }
 
-  /// Check if there's an active session (for debugging).
+  /// 检查是否有活跃会话（调试）
   bool get hasActiveSession => _sessionStartMs != null;
 }

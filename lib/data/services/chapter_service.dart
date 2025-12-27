@@ -8,7 +8,7 @@ class ChapterContent {
   final String content;
   final String? fontUrl;
   final int sortNum;
-  // Server-provided reading position for this chapter
+  // 服务端提供的阅读位置
   final String? serverPosition;
 
   ChapterContent({
@@ -39,8 +39,8 @@ class ChapterService {
   static final Logger _logger = Logger('ChapterService');
   final SignalRService _signalRService = SignalRService();
 
-  /// Get chapter content
-  /// Reference: getNovelContent in services/chapter/index.ts
+  /// 获取章节内容
+  /// 参考 services/chapter/index.ts
   /// Convert: 't2s' | 's2t' | null
   Future<ChapterContent> getNovelContent(
     int bid,
@@ -48,7 +48,7 @@ class ChapterService {
     String? convert,
   }) async {
     try {
-      // Web reference always passes options with UseGzip: true as second arg
+      // Web 参考包含 UseGzip
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetNovelContent',
         args: [
@@ -57,12 +57,12 @@ class ChapterService {
             'SortNum': sortNum,
             if (convert != null) 'Convert': convert,
           },
-          // Options (like reference's defaultRequestOptions)
+          // 选项
           {'UseGzip': true},
         ],
       );
 
-      // Debug: Print raw chapter data to see structure
+      // 调试：打印原始章节数据
       developer.log(
         'Raw result keys: ${result.keys.toList()}',
         name: 'CHAPTER',
@@ -75,7 +75,7 @@ class ChapterService {
         );
         developer.log('Font value: ${chapter['Font']}', name: 'CHAPTER');
 
-        // Extract ReadPosition if available
+        // 提取阅读位置
         String? position;
         final readPos = result['ReadPosition'];
         if (readPos != null && readPos is Map) {

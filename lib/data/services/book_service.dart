@@ -17,7 +17,7 @@ class BookService {
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
         'GetLatestBookList',
         args: [
-          // Request params
+          // 请求参数
           {
             'Page': page,
             'Size': size,
@@ -25,7 +25,7 @@ class BookService {
             'IgnoreJapanese': ignoreJapanese,
             'IgnoreAI': ignoreAI,
           },
-          // Options (like reference's defaultRequestOptions)
+          // 选项（参考 defaultRequestOptions）
           {'UseGzip': true},
         ],
       );
@@ -42,7 +42,7 @@ class BookService {
     }
   }
 
-  /// Get book list with pagination, sorting and filtering
+  /// 获取书籍列表（分页/排序/过滤）
   Future<SearchResult> getBookList({
     int page = 1,
     int size = 20,
@@ -82,7 +82,7 @@ class BookService {
   Future<List<Book>> getBooksByIds(List<int> ids) async {
     if (ids.isEmpty) return [];
 
-    // Chunking to 24 max as per PRD/Ref
+    // 分块加载，每块最多 24 个（参考 PRD）
     final List<Book> allBooks = [];
     final int chunkSize = 24;
 
@@ -96,7 +96,7 @@ class BookService {
           args: [
             // Request params
             {'Ids': chunk},
-            // Options
+            // 选项
             {'UseGzip': true},
           ],
         );
@@ -111,8 +111,8 @@ class BookService {
     return allBooks;
   }
 
-  /// Get detailed book information including chapters
-  /// Reference: getBookInfo in services/book/index.ts
+  /// 获取详细书籍信息（含章节）
+  /// 参考 services/book/index.ts
   Future<BookInfo> getBookInfo(int id) async {
     try {
       final result = await _signalRService.invoke<Map<dynamic, dynamic>>(
@@ -131,9 +131,9 @@ class BookService {
     }
   }
 
-  /// Get ranking list for specified period
-  /// Reference: getRank in services/book/index.ts
-  /// [days]: 1 = daily, 7 = weekly, 31 = monthly
+  /// 获取指定周期的排行榜
+  /// 参考 services/book/index.ts
+  /// [days]: 1=日榜, 7=周榜, 31=月榜
   Future<List<Book>> getRank(int days) async {
     try {
       final result = await _signalRService.invoke<List<dynamic>>(
@@ -152,8 +152,8 @@ class BookService {
     }
   }
 
-  /// Search books by keywords
-  /// Reference: getBookList in services/book/index.ts
+  /// 关键词搜索书籍
+  /// 参考 services/book/index.ts
   Future<SearchResult> searchBooks(
     String keywords, {
     int page = 1,
@@ -195,7 +195,7 @@ class BookService {
   }
 }
 
-/// Search result with pagination info
+/// 带分页信息的搜索结果
 class SearchResult {
   final List<Book> books;
   final int totalPages;

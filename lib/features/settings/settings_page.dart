@@ -10,15 +10,15 @@ import 'package:novella/features/book/book_detail_page.dart'
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'dart:io' show Platform;
 
-/// Settings state model
+/// 设置状态模型
 class AppSettings {
   final double fontSize;
-  final String theme; // 'system', 'light', 'dark'
-  final String convertType; // 'none', 't2s', 's2t'
+  final String theme; // 'system'（系统）, 'light'（浅色）, 'dark'（深色）
+  final String convertType; // 'none'（关闭）, 't2s'（繁转简）, 's2t'（简转繁）
   final bool showChapterNumber;
   final bool fontCacheEnabled;
   final int fontCacheLimit; // 10-60
-  final String homeRankType; // 'daily', 'weekly', 'monthly'
+  final String homeRankType; // 'daily'（日）, 'weekly'（周）, 'monthly'（月）
   final bool oledBlack;
   final bool cleanChapterTitle;
   final bool ignoreJapanese;
@@ -51,7 +51,7 @@ class AppSettings {
     this.cleanChapterTitle = false,
     this.ignoreJapanese = false,
     this.ignoreAI = false,
-    this.ignoreLevel6 = true, // Default ON - hide Level6 books
+    this.ignoreLevel6 = true, // 默认开启 - 隐藏 Level6 书籍
     this.homeModuleOrder = defaultModuleOrder,
     this.enabledHomeModules = defaultEnabledModules,
     this.bookDetailCacheEnabled = true,
@@ -97,16 +97,16 @@ class AppSettings {
     );
   }
 
-  /// Check if a module is enabled
+  /// 检查模块是否启用
   bool isModuleEnabled(String moduleId) =>
       enabledHomeModules.contains(moduleId);
 
-  /// Check if book type badge is enabled for a scope
+  /// 检查指定范围是否启用书籍类型角标
   bool isBookTypeBadgeEnabled(String scope) =>
       bookTypeBadgeScopes.contains(scope);
 }
 
-/// Settings notifier using Riverpod 3.x Notifier API
+/// 基于 Riverpod 3.x Notifier API 的设置通知器
 class SettingsNotifier extends Notifier<AppSettings> {
   @override
   AppSettings build() {
@@ -132,7 +132,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       cleanChapterTitle: prefs.getBool('setting_cleanChapterTitle') ?? false,
       ignoreJapanese: prefs.getBool('setting_ignoreJapanese') ?? false,
       ignoreAI: prefs.getBool('setting_ignoreAI') ?? false,
-      ignoreLevel6: prefs.getBool('setting_ignoreLevel6') ?? true, // Default ON
+      ignoreLevel6: prefs.getBool('setting_ignoreLevel6') ?? true, // 默认开启
       homeModuleOrder: List<String>.from(
         prefs.getStringList('setting_homeModuleOrder') ??
             AppSettings.defaultModuleOrder,
@@ -187,7 +187,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setTheme(String theme) {
     state = state.copyWith(theme: theme);
     _save();
-    // Clear book detail page caches to force re-extraction for new theme
+    // 清除书籍详情页缓存以强制重新提取新主题的颜色
     BookDetailPageState.clearColorCache();
     BookInfoCacheService().clear();
   }
@@ -257,7 +257,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _save();
   }
 
-  /// Update both order and enabled modules at once
+  /// 同时更新排序和启用模块
   void setHomeModuleConfig({
     required List<String> order,
     required List<String> enabled,
@@ -272,12 +272,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 }
 
-/// Provider for settings (Riverpod 3.x syntax)
+/// 设置提供者（Riverpod 3.x 语法）
 final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(
   SettingsNotifier.new,
 );
 
-/// Settings page widget
+/// 设置页面组件
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
@@ -303,10 +303,10 @@ class SettingsPage extends ConsumerWidget {
               ),
             ),
 
-            // Reading Settings Section
+            // 阅读设置区域
             _buildSectionHeader(context, '阅读'),
 
-            // Font Size
+            // 字体大小
             ListTile(
               leading: const Icon(Icons.text_fields),
               title: const Text('字体大小'),
@@ -324,7 +324,7 @@ class SettingsPage extends ConsumerWidget {
               ),
             ),
 
-            // Text Conversion
+            // 繁简转换
             ListTile(
               leading: const Icon(Icons.translate),
               title: const Text('繁简转换'),
@@ -359,7 +359,7 @@ class SettingsPage extends ConsumerWidget {
                   ),
             ),
 
-            // Show Chapter Number
+            // 显示章节序号
             SwitchListTile(
               secondary: const Icon(Icons.format_list_numbered),
               title: const Text('显示章节序号'),
@@ -367,7 +367,7 @@ class SettingsPage extends ConsumerWidget {
               onChanged: (value) => notifier.setShowChapterNumber(value),
             ),
 
-            // Clean Chapter Title for continue button
+            // 简化续读按钮的章节标题
             SwitchListTile(
               secondary: const Icon(Icons.auto_fix_high),
               title: const Text('简化章节标题'),
@@ -378,7 +378,7 @@ class SettingsPage extends ConsumerWidget {
 
             const Divider(),
 
-            // Content Filtering Section
+            // 内容过滤区域
             _buildSectionHeader(context, '内容'),
             ListTile(
               leading: const Icon(Icons.filter_list),
@@ -399,7 +399,7 @@ class SettingsPage extends ConsumerWidget {
               onTap: () => _showContentFilterSheet(context),
             ),
 
-            // Home Rank Type
+            // 首页榜单类型
             ListTile(
               leading: const Icon(Icons.leaderboard_outlined),
               title: const Text('首页榜单'),
@@ -441,7 +441,7 @@ class SettingsPage extends ConsumerWidget {
                   ),
             ),
 
-            // Home Module Order
+            // 首页模块排序
             ListTile(
               leading: const Icon(Icons.reorder),
               title: const Text('首页管理'),
@@ -483,10 +483,10 @@ class SettingsPage extends ConsumerWidget {
 
             const Divider(),
 
-            // Appearance Section
+            // 外观区域
             _buildSectionHeader(context, '外观'),
 
-            // Theme
+            // 主题
             ListTile(
               leading: const Icon(Icons.palette_outlined),
               title: const Text('主题'),
@@ -525,7 +525,7 @@ class SettingsPage extends ConsumerWidget {
                   ),
             ),
 
-            // OLED Black Mode
+            // OLED 纯黑模式
             SwitchListTile(
               secondary: const Icon(Icons.contrast),
               title: const Text('纯黑模式'),
@@ -539,10 +539,10 @@ class SettingsPage extends ConsumerWidget {
 
             const Divider(),
 
-            // Cache Management Section
+            // 缓存管理区域
             _buildSectionHeader(context, '缓存'),
 
-            // Book Detail Page Cache
+            // 书籍详情页缓存
             SwitchListTile(
               secondary: const Icon(Icons.menu_book),
               title: const Text('详情页缓存'),
@@ -551,7 +551,7 @@ class SettingsPage extends ConsumerWidget {
               onChanged: (value) => notifier.setBookDetailCacheEnabled(value),
             ),
 
-            // Font Cache Enable Switch
+            // 字体缓存开关
             SwitchListTile(
               secondary: const Icon(Icons.cached),
               title: const Text('字体缓存'),
@@ -560,7 +560,7 @@ class SettingsPage extends ConsumerWidget {
               onChanged: (value) => notifier.setFontCacheEnabled(value),
             ),
 
-            // Font Cache Limit Slider (only visible when cache is enabled)
+            // 字体缓存限制滑块（仅在启用缓存时显示）
             if (settings.fontCacheEnabled)
               ListTile(
                 leading: const Icon(Icons.storage),
@@ -580,7 +580,7 @@ class SettingsPage extends ConsumerWidget {
                 ),
               ),
 
-            // Clear All Cache Button
+            // 清除所有缓存按钮
             ListTile(
               leading: Icon(
                 Icons.delete_outline,
@@ -595,7 +595,7 @@ class SettingsPage extends ConsumerWidget {
 
             const Divider(),
 
-            // About Section
+            // 关于区域
             _buildSectionHeader(context, '关于'),
 
             const ListTile(
@@ -617,7 +617,7 @@ class SettingsPage extends ConsumerWidget {
               },
             ),
 
-            // Debug: RustLib FFI Status
+            // 调试：RustLib FFI 状态
             ListTile(
               leading: Icon(
                 rustLibInitialized ? Icons.check_circle : Icons.error,
@@ -642,7 +642,7 @@ class SettingsPage extends ConsumerWidget {
 
             const SizedBox(height: 32),
 
-            // Logout button
+            // 退出登录按钮
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: OutlinedButton.icon(
@@ -726,7 +726,7 @@ class SettingsPage extends ConsumerWidget {
                 onPressed: () async {
                   Navigator.pop(dialogContext);
 
-                  // Show loading indicator
+                  // 显示加载指示器
                   final scaffold = ScaffoldMessenger.of(context);
                   scaffold.showSnackBar(
                     const SnackBar(
@@ -748,10 +748,10 @@ class SettingsPage extends ConsumerWidget {
                     ),
                   );
 
-                  // Clear cache
+                  // 清除缓存
                   final deletedCount = await FontManager().clearAllCaches();
 
-                  // Show result
+                  // 显示结果
                   scaffold.hideCurrentSnackBar();
                   scaffold.showSnackBar(
                     SnackBar(

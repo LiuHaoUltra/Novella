@@ -17,7 +17,7 @@ class AuthService {
         data: {
           'email': username,
           'password': password,
-          'token': '', // Captcha token (Turnstile)
+          'token': '', // 验证码 token (Turnstile)
         },
       );
 
@@ -55,20 +55,20 @@ class AuthService {
     await prefs.remove('refresh_token');
   }
 
-  /// Save refresh token and automatically fetch session token
+  /// 保存刷新令牌并自动获取会话令牌
   Future<void> saveTokens(String token, String refreshToken) async {
     final prefs = await SharedPreferences.getInstance();
 
-    // If we have a session token, save it directly
+    // 若有会话令牌直接保存
     if (token.isNotEmpty) {
       await prefs.setString('auth_token', token);
     }
 
-    // Save refresh token
+    // 保存刷新令牌
     if (refreshToken.isNotEmpty) {
       await prefs.setString('refresh_token', refreshToken);
 
-      // If no session token provided, use refresh token to get one
+      // 若无会话令牌，尝试刷新获取
       if (token.isEmpty) {
         _logger.info('No session token, attempting to refresh...');
         final success = await _refreshSessionToken(refreshToken);
@@ -79,17 +79,17 @@ class AuthService {
     }
 
     _logger.info('Tokens saved. Initializing SignalR...');
-    // Await SignalR connection to ensure it's ready (like reference's getMyInfo() pattern)
+    // 等待 SignalR 连接就绪（参考 getMyInfo 模式）
     try {
       await _signalRService.init();
       developer.log('SignalR initialized successfully', name: 'AUTH');
     } catch (e) {
       developer.log('SignalR init error: $e', name: 'AUTH');
-      // Don't throw - user can still retry API calls which will reconnect
+      // 不抛出异常，允许用户重试
     }
   }
 
-  /// Use refresh token to get a new session token
+  /// 使用刷新令牌获取新会话令牌
   Future<bool> _refreshSessionToken(String refreshToken) async {
     try {
       developer.log(
@@ -120,12 +120,12 @@ class AuthService {
       );
 
       if (response.statusCode == 200) {
-        // API returns: {Response: "JWT_TOKEN", Status: 200, Success: true, Msg: ""}
+        // API 返回格式：{Response, Status, Success, Msg}
         String? newToken;
         if (response.data is String) {
           newToken = response.data;
         } else if (response.data is Map) {
-          // Check 'Response' field (actual API format)
+          // 检查 Response 字段（实际 API 格式）
           if (response.data['Response'] != null) {
             newToken = response.data['Response'];
           } else if (response.data['Token'] != null) {
@@ -164,21 +164,20 @@ class AuthService {
     }
   }
 
-  /// Try to auto-login using stored refresh token
+  /// 尝试使用存储的刷新令牌自动登录
   Future<bool> tryAutoLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString('refresh_token');
 
     if (refreshToken != null && refreshToken.isNotEmpty) {
       _logger.info('Found refresh token, attempting auto-login...');
-      // Initialize SignalR in background (don't await if we want fast UI but better to await for connection)
-      // Actually, let's await it to ensure we are connected before showing Home
+      // 初始化 SignalR
       try {
         await _signalRService.init();
         return true;
       } catch (e) {
         _logger.warning('Auto-login SignalR init failed: $e');
-        // Even if SignalR fails (e.g. network), we still have a token.
+        // 即使 SignalR 失败（如网络问题），仍保留令牌
         // We might want to let user into app and retry connection there.
         return true;
       }

@@ -53,13 +53,13 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Refresh history when app comes back to foreground
+    // 前台恢复时刷新历史
     if (state == AppLifecycleState.resumed && mounted) {
       _fetchHistory(force: true);
     }
   }
 
-  /// Public method to refresh history from outside
+  /// 外部刷新历史方法
   void refresh() {
     _fetchHistory(force: true);
   }
@@ -70,7 +70,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
     }
 
     try {
-      // Get book IDs from history
+      // 从历史记录获取书籍 ID
       final bookIds = await _userService.getReadHistory();
 
       if (bookIds.isEmpty) {
@@ -82,10 +82,10 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
         return;
       }
 
-      // Fetch book details for those IDs
+      // 获取对应书籍详情
       final books = await _bookService.getBooksByIds(bookIds);
 
-      // Sort books by their order in history (most recent first)
+      // 按历史顺序排序（最近优先）
       final sortedBooks = <Book>[];
       for (final id in bookIds) {
         final book = books.cast<Book?>().firstWhere(
@@ -283,7 +283,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
       );
     }
 
-    // Grid of books
+    // 书籍网格列表
     final displayBooks = _books.take(_displayedCount).toList();
     final hasMore = _displayedCount < _books.length;
 
@@ -325,7 +325,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
               ),
             )
             .then((_) {
-              // Refresh history when returning from book detail
+              // 从详情页返回时刷新
               if (mounted) {
                 _fetchHistory(force: true);
               }
@@ -385,7 +385,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
                               ),
                             ),
                   ),
-                  // Book type badge (inside Hero)
+                  // 书籍类型角标（Hero 内部）
                   Consumer(
                     builder: (context, ref, _) {
                       if (ref
@@ -400,7 +400,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
               ),
             ),
           ),
-          // Title - Fixed height container to prevent cover ratio issues
+          // 标题 - 固定高度防止影响封面比例
           SizedBox(
             height: 36,
             child: Padding(

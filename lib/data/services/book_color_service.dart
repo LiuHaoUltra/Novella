@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:palette_generator/palette_generator.dart';
 
-/// Service for extracting colors from book covers and generating dynamic ColorSchemes
+/// 书籍封面颜色提取与动态配色方案生成服务
 class BookColorService {
   static final _logger = Logger('BookColorService');
 
@@ -12,14 +12,14 @@ class BookColorService {
   factory BookColorService() => _instance;
   BookColorService._internal();
 
-  // Cache: "bookId_brightness" -> ColorScheme
+  // 缓存：ColorScheme
   final Map<String, ColorScheme> _schemeCache = {};
 
-  // Cache: "bookId_brightness" -> List<Color> (gradient colors)
+  // 缓存：渐变色
   final Map<String, List<Color>> _gradientCache = {};
 
-  /// Get a dynamic ColorScheme based on cover image
-  /// Returns null if color extraction fails
+  /// 基于封面获取动态 ColorScheme
+  /// 提取失败返回 null
   Future<ColorScheme?> getColorScheme({
     required int bookId,
     required String coverUrl,
@@ -29,7 +29,7 @@ class BookColorService {
 
     final cacheKey = '${bookId}_${brightness.name}';
 
-    // Check cache first
+    // 优先检查缓存
     if (_schemeCache.containsKey(cacheKey)) {
       return _schemeCache[cacheKey];
     }
@@ -38,13 +38,13 @@ class BookColorService {
       final seedColor = await _extractDominantColor(coverUrl);
       if (seedColor == null) return null;
 
-      // Generate ColorScheme from seed color
+      // 生成 ColorScheme
       final colorScheme = ColorScheme.fromSeed(
         seedColor: seedColor,
         brightness: brightness,
       );
 
-      // Cache the result
+      // 缓存结果
       _schemeCache[cacheKey] = colorScheme;
       _logger.info(
         'Generated ColorScheme for book $bookId (${brightness.name}): seed=${seedColor.toARGB32().toRadixString(16)}',
@@ -57,7 +57,7 @@ class BookColorService {
     }
   }
 
-  /// Get gradient colors for background (reusing existing logic)
+  /// 获取背景渐变色
   Future<List<Color>?> getGradientColors({
     required int bookId,
     required String coverUrl,
@@ -75,24 +75,24 @@ class BookColorService {
     try {
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         CachedNetworkImageProvider(coverUrl),
-        size: const Size(24, 24), // Small for fast extraction
+        size: const Size(24, 24), // 小尺寸以加速提取
         maximumColorCount: 3,
       );
 
-      // Get colors for gradient
+      // 获取渐变色
       final rawColors = <Color>[];
 
-      // Primary: dominant or vibrant
+      // 主色：主导或活力
       final primary =
           paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color;
 
-      // Secondary: muted or dark muted
+      // 次色：柔和或深柔和
       final secondary =
           paletteGenerator.mutedColor?.color ??
           paletteGenerator.darkMutedColor?.color;
 
-      // Tertiary: dark vibrant or light muted
+      // 第三色：深活力或浅柔和
       final tertiary =
           paletteGenerator.darkVibrantColor?.color ??
           paletteGenerator.lightMutedColor?.color;
@@ -101,7 +101,7 @@ class BookColorService {
       if (secondary != null) rawColors.add(secondary);
       if (tertiary != null) rawColors.add(tertiary);
 
-      // Ensure at least 2 colors
+      // 确保至少2种颜色
       if (rawColors.length < 2) {
         if (rawColors.isNotEmpty) {
           rawColors.add(
@@ -116,7 +116,7 @@ class BookColorService {
         }
       }
 
-      // Adjust colors for theme
+      // 调整颜色以适应主题
       final adjustedColors =
           rawColors.map((c) => _adjustColorForTheme(c, isDark)).toList();
 
@@ -130,7 +130,7 @@ class BookColorService {
     }
   }
 
-  /// Extract dominant color from cover image
+  /// 提取封面主色
   Future<Color?> _extractDominantColor(String coverUrl) async {
     try {
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
@@ -139,7 +139,7 @@ class BookColorService {
         maximumColorCount: 3,
       );
 
-      // Prefer vibrant color for more saturated seed, fallback to dominant
+      // 优先活力色，回退主色
       return paletteGenerator.vibrantColor?.color ??
           paletteGenerator.dominantColor?.color ??
           paletteGenerator.mutedColor?.color;
@@ -149,17 +149,17 @@ class BookColorService {
     }
   }
 
-  /// Adjust color based on theme brightness
+  /// 根据亮度调整颜色
   Color _adjustColorForTheme(Color color, bool isDark) {
     final hsl = HSLColor.fromColor(color);
     if (isDark) {
-      // Dark mode: reduce lightness, increase saturation slightly
+      // 深色模式：降低亮度，微增饱和度
       return hsl
           .withLightness((hsl.lightness * 0.6).clamp(0.1, 0.4))
           .withSaturation((hsl.saturation * 1.1).clamp(0.0, 1.0))
           .toColor();
     } else {
-      // Light mode: increase lightness, soften saturation
+      // 浅色模式：增加亮度，柔化饱和
       return hsl
           .withLightness((hsl.lightness * 0.8 + 0.3).clamp(0.5, 0.85))
           .withSaturation((hsl.saturation * 0.7).clamp(0.0, 0.8))
@@ -167,13 +167,13 @@ class BookColorService {
     }
   }
 
-  /// Clear all cached data
+  /// 清除所有缓存
   void clearCache() {
     _schemeCache.clear();
     _gradientCache.clear();
   }
 
-  /// Clear cache for a specific book
+  /// 清除特定书籍缓存
   void clearBookCache(int bookId) {
     _schemeCache.removeWhere((key, _) => key.startsWith('${bookId}_'));
     _gradientCache.removeWhere((key, _) => key.startsWith('${bookId}_'));

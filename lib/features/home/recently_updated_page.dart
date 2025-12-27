@@ -26,7 +26,7 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
   bool _loadingMore = false;
   int _currentPage = 1;
   int _totalPages = 1;
-  static const int _pageSize = 24; // Match backend limit/recommendation
+  static const int _pageSize = 24; // 匹配后端限制/建议
 
   @override
   void initState() {
@@ -239,7 +239,7 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
                           ),
                     ),
                   ),
-                  // Book type badge (inside Hero)
+                  // 书籍类型角标（Hero 内部）
                   if (ref
                       .watch(settingsProvider)
                       .isBookTypeBadgeEnabled('recent'))
@@ -249,7 +249,7 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
             ),
           ),
           SizedBox(
-            height: 36, // Fixed height for 2 lines of text
+            height: 36, // 固定高度容纳两行文字
             child: Padding(
               padding: const EdgeInsets.only(top: 6, left: 2, right: 2),
               child: Text(

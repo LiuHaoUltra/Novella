@@ -27,14 +27,14 @@ class NovelHubProtocol implements IHubProtocol {
         input is Uint8List ? input : Uint8List.fromList(input as List<int>);
     final messages = <HubMessageBase>[];
 
-    // SignalR Binary protocol uses VarInt length-prefixed framing:
-    // [VarInt Length][MessagePack Payload][VarInt Length][MessagePack Payload]...
+    // SignalR 二进制协议使用 VarInt 长度前缀分帧：
+    // [VarInt 长度][MessagePack 负载]...
 
     developer.log('Received ${bytes.length} bytes total', name: 'PROTOCOL');
 
     int offset = 0;
     while (offset < bytes.length) {
-      // Read VarInt length
+      // 读取 VarInt 长度
       int length = 0;
       int bytesRead = 0;
       int shift = 0;
@@ -44,9 +44,9 @@ class NovelHubProtocol implements IHubProtocol {
         length |= (byte & 0x7F) << shift;
         bytesRead++;
 
-        if ((byte & 0x80) == 0) break; // MSB is 0, last byte
+        if ((byte & 0x80) == 0) break; // MSB 为 0，终止字节
         shift += 7;
-        if (shift >= 35) break; // VarInt too large
+        if (shift >= 35) break; // VarInt 过大
       }
 
       if (length == 0) {
@@ -251,10 +251,10 @@ class NovelHubProtocol implements IHubProtocol {
     }
     // Add other types as needed
 
-    // Serialize using msgpack_dart
+    // 使用 msgpack_dart 序列化
     final serialized = msgpack.serialize(payload);
 
-    // SignalR Binary protocol requires VarInt length prefix
+    // 需要 VarInt 长度前缀
     final lengthBytes = _writeVarInt(serialized.length);
     final result = Uint8List(lengthBytes.length + serialized.length);
     result.setAll(0, lengthBytes);
@@ -268,7 +268,7 @@ class NovelHubProtocol implements IHubProtocol {
     return result;
   }
 
-  /// Write a VarInt to bytes
+  /// 写入 VarInt
   Uint8List _writeVarInt(int value) {
     final bytes = <int>[];
     while (value > 0x7F) {
@@ -279,7 +279,7 @@ class NovelHubProtocol implements IHubProtocol {
     return Uint8List.fromList(bytes);
   }
 
-  /// Convert MessageHeaders to a serializable Map
+  /// 将 MessageHeaders 转换为可序列化 Map
   Map<String, dynamic>? _toSerializableMap(dynamic headers) {
     if (headers == null) return null;
     if (headers is Map) {
@@ -293,7 +293,7 @@ class NovelHubProtocol implements IHubProtocol {
     return <String, dynamic>{};
   }
 
-  /// Convert arguments list, ensuring Maps are serializable
+  /// 转换参数列表，确保 Map 可序列化
   List<dynamic>? _toSerializableList(List<dynamic>? args) {
     if (args == null) return null;
     return args.map((item) {

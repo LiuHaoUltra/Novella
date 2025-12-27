@@ -52,7 +52,7 @@ class _MainPageState extends State<MainPage> {
             setState(() {
               _currentIndex = index;
             });
-            // Refresh pages when switched to their tab
+            // 切换标签时刷新页面
             if (index == 1) {
               _shelfKey.currentState?.refresh();
             } else if (index == 2) {
