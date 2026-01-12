@@ -28,6 +28,7 @@ class AppSettings {
   final List<String> enabledHomeModules;
   final bool bookDetailCacheEnabled;
   final List<String> bookTypeBadgeScopes;
+  final bool coverColorExtraction; // 封面取色开关
 
   static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
   static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
@@ -48,7 +49,7 @@ class AppSettings {
     this.fontCacheLimit = 30,
     this.homeRankType = 'weekly',
     this.oledBlack = false,
-    this.cleanChapterTitle = false,
+    this.cleanChapterTitle = true,
     this.ignoreJapanese = false,
     this.ignoreAI = false,
     this.ignoreLevel6 = true, // 默认开启 - 隐藏 Level6 书籍
@@ -56,6 +57,7 @@ class AppSettings {
     this.enabledHomeModules = defaultEnabledModules,
     this.bookDetailCacheEnabled = true,
     this.bookTypeBadgeScopes = defaultBookTypeBadgeScopes,
+    this.coverColorExtraction = true, // 默认开启
   });
 
   AppSettings copyWith({
@@ -75,6 +77,7 @@ class AppSettings {
     List<String>? enabledHomeModules,
     bool? bookDetailCacheEnabled,
     List<String>? bookTypeBadgeScopes,
+    bool? coverColorExtraction,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -94,6 +97,7 @@ class AppSettings {
       bookDetailCacheEnabled:
           bookDetailCacheEnabled ?? this.bookDetailCacheEnabled,
       bookTypeBadgeScopes: bookTypeBadgeScopes ?? this.bookTypeBadgeScopes,
+      coverColorExtraction: coverColorExtraction ?? this.coverColorExtraction,
     );
   }
 
@@ -129,7 +133,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       fontCacheLimit: prefs.getInt('setting_fontCacheLimit') ?? 30,
       homeRankType: prefs.getString('setting_homeRankType') ?? 'weekly',
       oledBlack: prefs.getBool('setting_oledBlack') ?? false,
-      cleanChapterTitle: prefs.getBool('setting_cleanChapterTitle') ?? false,
+      cleanChapterTitle: prefs.getBool('setting_cleanChapterTitle') ?? true,
       ignoreJapanese: prefs.getBool('setting_ignoreJapanese') ?? false,
       ignoreAI: prefs.getBool('setting_ignoreAI') ?? false,
       ignoreLevel6: prefs.getBool('setting_ignoreLevel6') ?? true, // 默认开启
@@ -147,6 +151,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
         prefs.getStringList('setting_bookTypeBadgeScopes') ??
             AppSettings.defaultBookTypeBadgeScopes,
       ),
+      coverColorExtraction:
+          prefs.getBool('setting_coverColorExtraction') ?? true,
     );
   }
 
@@ -176,6 +182,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await prefs.setStringList(
       'setting_bookTypeBadgeScopes',
       state.bookTypeBadgeScopes,
+    );
+    await prefs.setBool(
+      'setting_coverColorExtraction',
+      state.coverColorExtraction,
     );
   }
 
@@ -218,8 +228,26 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   void setOledBlack(bool value) {
+    // 只有在禁用封面取色时才允许开启纯黑模式
+    // UI 层也应做限制，这里做二次防护
+    if (state.coverColorExtraction && value) {
+      return;
+    }
     state = state.copyWith(oledBlack: value);
     _save();
+  }
+
+  void setCoverColorExtraction(bool value) {
+    // 开启封面取色时，强制关闭纯黑模式
+    if (value) {
+      state = state.copyWith(coverColorExtraction: value, oledBlack: false);
+    } else {
+      state = state.copyWith(coverColorExtraction: value);
+    }
+    _save();
+    // 清除缓存以重新提取（或不再提取）
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
   }
 
   void setCleanChapterTitle(bool value) {
@@ -525,14 +553,27 @@ class SettingsPage extends ConsumerWidget {
                   ),
             ),
 
+            // 封面取色
+            SwitchListTile(
+              secondary: const Icon(Icons.colorize),
+              title: const Text('封面取色'),
+              subtitle: const Text('从封面提取颜色作为背景主题'),
+              value: settings.coverColorExtraction,
+              onChanged: (value) => notifier.setCoverColorExtraction(value),
+            ),
+
             // OLED 纯黑模式
             SwitchListTile(
               secondary: const Icon(Icons.contrast),
               title: const Text('纯黑模式'),
-              subtitle: const Text('禁用封面取色，更深邃的黑色背景'),
+              subtitle: Text(
+                settings.coverColorExtraction ? '需关闭封面取色' : '更深邃的黑色背景',
+              ),
               value: settings.oledBlack,
               onChanged:
-                  colorScheme.brightness == Brightness.dark
+                  // 仅在深色模式且未开启封面取色时可用
+                  (colorScheme.brightness == Brightness.dark &&
+                          !settings.coverColorExtraction)
                       ? (value) => notifier.setOledBlack(value)
                       : null,
             ),

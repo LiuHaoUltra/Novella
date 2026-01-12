@@ -382,6 +382,12 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   /// 从封面提取主色调生成渐变背景
   Future<void> _extractColors(String coverUrl, bool isDark) async {
+    final settings = ref.read(settingsProvider);
+    // 如果禁用了封面取色，则不执行
+    if (!settings.coverColorExtraction) {
+      return;
+    }
+
     if (coverUrl.isEmpty) {
       setState(() => _coverLoadFailed = true);
       return;
@@ -960,21 +966,49 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     // Use dynamic ColorScheme if available AND not in OLED mode
     // OLED mode uses system default colors for pure black experience
+    // Also check coverColorExtraction setting
     final baseColorScheme = Theme.of(context).colorScheme;
     final colorScheme =
-        (isOled || _dynamicColorScheme == null)
+        (isOled ||
+                _dynamicColorScheme == null ||
+                !settings.coverColorExtraction)
             ? baseColorScheme
             : _dynamicColorScheme!;
 
-    // 加载时显示预览
-    if (_loading &&
-        (widget.initialCoverUrl != null || widget.initialTitle != null)) {
-      return _buildThemedScaffold(
-        context,
-        colorScheme,
-        _buildLoadingPreview(colorScheme),
-        isOled: isOled,
-      );
+    // 检查是否有封面需要提取颜色
+    // 只要有初始封面或已加载的封面，且未失败，就认为需要等待
+    final hasCover =
+        (widget.initialCoverUrl != null &&
+            widget.initialCoverUrl!.isNotEmpty) ||
+        (_bookInfo?.cover != null && _bookInfo!.cover.isNotEmpty);
+
+    // 是否需要等待颜色提取
+    // 1. 尚未提取完成
+    // 2. 封面加载未标记失败
+    // 3. 确实有封面 URL (无封面则不等待)
+    // 4. 非 OLED 模式 (OLED 模式不提取颜色)
+    // 5. 开启了封面取色
+    final shouldWaitColors =
+        !_colorsExtracted &&
+        !_coverLoadFailed &&
+        hasCover &&
+        !isOled &&
+        settings.coverColorExtraction;
+
+    // 加载中 OR 需要等待颜色提取时，显示预览/骨架屏
+    // 这样可以防止内容先出来，背景后变色的闪烁
+    if (_loading || shouldWaitColors) {
+      // 如果没有任何封面信息且正在加载，也显示骨架屏
+      if (widget.initialCoverUrl != null ||
+          widget.initialTitle != null ||
+          _loading) {
+        return _buildThemedScaffold(
+          context,
+          colorScheme,
+          _buildLoadingPreview(colorScheme),
+          isOled: isOled,
+        );
+      }
     }
 
     return _buildThemedScaffold(
@@ -1039,7 +1073,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
               fit: StackFit.expand,
               children: [
                 // 渐变背景或加载占位
-                if (!isOled && _gradientColors != null)
+                if (!isOled &&
+                    _gradientColors != null &&
+                    settings.coverColorExtraction)
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -1052,9 +1088,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                 else
                   Container(
                     color:
-                        colorScheme.brightness == Brightness.dark
-                            ? (isOled ? Colors.black : const Color(0xFF1E1E1E))
-                            : const Color(0xFFF0F0F0),
+                        isOled
+                            ? Colors.black
+                            : Theme.of(context).scaffoldBackgroundColor,
                   ),
                 // Gradient overlay
                 Container(
@@ -1258,7 +1294,10 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
               fit: StackFit.expand,
               children: [
                 // 提取色渐变背景或降级
-                if (!isOled && _gradientColors != null && !_coverLoadFailed)
+                if (!isOled &&
+                    _gradientColors != null &&
+                    !_coverLoadFailed &&
+                    settings.coverColorExtraction)
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -1302,21 +1341,13 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                       ),
                     ),
                   )
-                else if (!isOled && (_coverLoadFailed || book.cover.isEmpty))
-                  // 降级：主题纯色
-                  Container(
-                    color:
-                        colorScheme.brightness == Brightness.dark
-                            ? const Color(0xFF2A2A2A)
-                            : const Color(0xFFE8E8E8),
-                  )
                 else
-                  // 加载态：中性占位
+                  // 默认背景：使用 Scaffold 背景色
                   Container(
                     color:
-                        colorScheme.brightness == Brightness.dark
-                            ? (isOled ? Colors.black : const Color(0xFF1E1E1E))
-                            : const Color(0xFFF0F0F0),
+                        isOled
+                            ? Colors.black
+                            : Theme.of(context).scaffoldBackgroundColor,
                   ),
                 // 平滑过渡渐变遮罩
                 Container(
