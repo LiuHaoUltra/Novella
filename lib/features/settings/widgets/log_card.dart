@@ -21,7 +21,7 @@ class LogCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: logColor.withOpacity(0.3), width: 1),
+        side: BorderSide(color: logColor.withValues(alpha: 0.3), width: 1),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -63,7 +63,7 @@ class LogCard extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: logColor.withOpacity(0.1),
+                      color: logColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(

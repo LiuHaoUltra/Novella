@@ -112,9 +112,9 @@ class _MyAppState extends ConsumerState<MyApp> {
     final syncManager = SyncManager();
     await syncManager.init();
 
-    // 如果已连接，触发后台同步
+    // 如果已连接，立即触发同步（跳过防抖，确保进入阅读器前数据已同步）
     if (syncManager.isConnected) {
-      syncManager.triggerSync();
+      syncManager.triggerSync(immediate: true);
     }
 
     setState(() {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_service.dart';
@@ -776,8 +777,82 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   }
 
   void _continueReading() {
+    final syncManager = SyncManager();
+
+    // 检查是否开启了 Gist 同步但尚未完成
+    if (syncManager.isConnected && syncManager.status == SyncStatus.syncing) {
+      _showSyncWarningSheet();
+      return;
+    }
+
     final sortNum = _readPosition?.sortNum ?? 1;
     _startReading(sortNum: sortNum);
+  }
+
+  /// 显示同步未完成警告弹窗
+  void _showSyncWarningSheet() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.sync, color: colorScheme.tertiary),
+                    const SizedBox(width: 12),
+                    Text(
+                      '同步进行中',
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Text(
+                  '云端进度正在同步，现在进入阅读可能无法恢复到最新位置。',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.play_arrow, color: colorScheme.primary),
+                title: const Text('继续阅读'),
+                subtitle: const Text('忽略同步状态，立即进入'),
+                onTap: () {
+                  Navigator.pop(context);
+                  final sortNum = _readPosition?.sortNum ?? 1;
+                  _startReading(sortNum: sortNum);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.hourglass_top, color: colorScheme.tertiary),
+                title: const Text('等待同步'),
+                subtitle: const Text('稍后再试'),
+                onTap: () => Navigator.pop(context),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _toggleShelf() async {

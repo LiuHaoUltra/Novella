@@ -383,7 +383,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
           Icon(
             Icons.check_circle_outline,
             size: 64,
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
@@ -400,7 +400,7 @@ class _LogViewerPageState extends State<LogViewerPage> {
               fontSize: 14,
               color: Theme.of(
                 context,
-              ).colorScheme.onSurfaceVariant.withOpacity(0.7),
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             ),
           ),
         ],

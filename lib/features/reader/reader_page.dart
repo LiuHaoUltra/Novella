@@ -217,6 +217,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
+  // 标记进度是否成功恢复
+  bool _positionRestored = false;
+
   /// 内容加载后恢复进度
   Future<void> _restoreScrollPosition() async {
     if (_initialScrollDone) return;
@@ -232,25 +235,62 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     if (position != null &&
         position.sortNum == _chapter?.sortNum &&
         _scrollController.hasClients) {
-      // 等待布局完成
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      if (_scrollController.hasClients) {
-        final maxScroll = _scrollController.position.maxScrollExtent;
-        final targetScroll = position.scrollPosition * maxScroll;
-
-        _logger.info(
-          'Jumping to: target=$targetScroll, max=$maxScroll, percent=${(position.scrollPosition * 100).toStringAsFixed(1)}%',
-        );
-
-        _scrollController.jumpTo(targetScroll);
-      }
+      // 使用帧回调递归等待布局完成
+      await _waitForLayoutAndJump(position.scrollPosition);
     } else if (position != null) {
       _logger.info(
         'Position NOT restored: sortNum mismatch or no scroll clients. '
         'Saved chapter=${position.sortNum}, Current chapter=${_chapter?.sortNum}',
       );
     }
+  }
+
+  /// 等待布局完成后跳转到指定位置
+  /// 使用帧回调递归，更符合 Flutter 响应式设计
+  Future<void> _waitForLayoutAndJump(double scrollPercent) async {
+    const maxFrames = 60; // 最多等待 60 帧 (约 1 秒 @ 60fps)
+    int frameCount = 0;
+
+    final completer = Completer<void>();
+
+    void checkLayout(Duration _) {
+      if (!mounted || !_scrollController.hasClients) {
+        completer.complete();
+        return;
+      }
+
+      final maxScroll = _scrollController.position.maxScrollExtent;
+
+      // 布局完成：maxScrollExtent > 0
+      // 或短内容：已经尝试了足够多帧，内容确实很短
+      if (maxScroll > 0 || frameCount >= maxFrames) {
+        if (maxScroll > 0 && scrollPercent > 0) {
+          final targetScroll = scrollPercent * maxScroll;
+          _logger.info(
+            'Jumping to: target=$targetScroll, max=$maxScroll, '
+            'percent=${(scrollPercent * 100).toStringAsFixed(1)}% (frame $frameCount)',
+          );
+          _scrollController.jumpTo(targetScroll);
+          _positionRestored = true;
+        } else if (maxScroll == 0) {
+          _logger.info(
+            'Content too short for scrolling (maxScroll=0), position restore skipped',
+          );
+          _positionRestored = true; // 短内容视为"恢复成功"
+        }
+        completer.complete();
+        return;
+      }
+
+      // 继续等待下一帧
+      frameCount++;
+      WidgetsBinding.instance.addPostFrameCallback(checkLayout);
+    }
+
+    // 开始第一次检查
+    WidgetsBinding.instance.addPostFrameCallback(checkLayout);
+
+    return completer.future;
   }
 
   Future<void> _loadChapter(int bid, int sortNum) async {
@@ -265,6 +305,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _loading = true;
       _error = null;
       _initialScrollDone = false;
+      _positionRestored = false;
     });
 
     try {
@@ -300,17 +341,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         });
 
         // 构建后恢复进度
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _restoreScrollPosition();
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          await _restoreScrollPosition();
 
-          // 仿 Web：加载后短暂延时保存进度
-          // Web 使用 300ms 防抖
-          // 此处用 500ms 确保跳转完成
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted && _chapter != null) {
+          // 只有在进度恢复成功或 maxScrollExtent > 0 时才保存
+          // 避免保存错误的 0 位置覆盖正确数据
+          if (mounted && _chapter != null) {
+            if (_positionRestored) {
+              // 恢复成功，不需要立即保存（用户可能会继续阅读）
+              _logger.info(
+                'Position restored successfully, skipping immediate save',
+              );
+            } else if (_scrollController.hasClients &&
+                _scrollController.position.maxScrollExtent > 0) {
+              // 布局完成但没有需要恢复的进度（新章节），保存当前位置
               _saveCurrentPosition();
             }
-          });
+          }
         });
       }
     } catch (e) {
