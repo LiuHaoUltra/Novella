@@ -56,7 +56,12 @@ class BookMarkService {
 
   /// 设置标记状态
   /// 传入 [none] 移除标记
-  Future<void> setBookMark(int bookId, BookMarkStatus status) async {
+  /// [skipSync] 为 true 时不触发云同步（用于从云端恢复数据时）
+  Future<void> setBookMark(
+    int bookId,
+    BookMarkStatus status, {
+    bool skipSync = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '$_markPrefix$bookId';
 
@@ -68,8 +73,10 @@ class BookMarkService {
       _logger.info('Set mark for book $bookId: ${status.displayName}');
     }
 
-    // 触发云同步（立即）
-    SyncManager().triggerSync(immediate: true);
+    // 触发云同步（立即）- 除非是从云端恢复数据
+    if (!skipSync) {
+      SyncManager().triggerSync(immediate: true);
+    }
   }
 
   /// Get the mark status for a book.

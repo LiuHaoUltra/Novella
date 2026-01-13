@@ -22,6 +22,17 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   void initState() {
     super.initState();
     _syncManager.init();
+    _syncManager.addListener(_onSyncUpdate);
+  }
+
+  @override
+  void dispose() {
+    _syncManager.removeListener(_onSyncUpdate);
+    super.dispose();
+  }
+
+  void _onSyncUpdate() {
+    if (mounted) setState(() {});
   }
 
   @override

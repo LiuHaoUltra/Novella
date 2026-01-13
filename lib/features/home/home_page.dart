@@ -44,13 +44,6 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 返回页面时刷新阅读统计
-    _loadReadingStats();
-  }
-
   /// 加载阅读时长统计
   Future<void> _loadReadingStats() async {
     try {

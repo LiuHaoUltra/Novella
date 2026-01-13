@@ -77,7 +77,7 @@ class GistSyncService {
           headers: {'Accept': 'application/json'},
           body: {'client_id': _clientId, 'scope': _scope},
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -125,7 +125,7 @@ class GistSyncService {
               'grant_type': 'urn:ietf:params:oauth:grant-type:device_code',
             },
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -202,7 +202,7 @@ class GistSyncService {
             headers: headers,
             body: body,
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -221,7 +221,7 @@ class GistSyncService {
             headers: headers,
             body: body,
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         _logger.info('Gist updated successfully');
@@ -230,6 +230,10 @@ class GistSyncService {
         _logger.warning('Gist not found (404), clearing local ID');
         _gistId = null;
         throw Exception('云端数据丢失，将在下次同步时重新创建');
+      } else if (response.statusCode == 409) {
+        // 冲突 (通常是并发写导致)
+        _logger.warning('Gist conflict (409)');
+        throw Exception('同步冲突，请稍后重试');
       } else {
         _logger.severe('Failed to update Gist: ${response.body}');
         throw Exception('更新 Gist 失败: ${response.statusCode}');
@@ -258,10 +262,12 @@ class GistSyncService {
     }
 
     _logger.info('Downloading from Gist $_gistId...');
-    final response = await http.get(
-      Uri.parse('https://api.github.com/gists/$_gistId'),
-      headers: headers,
-    );
+    final response = await http
+        .get(
+          Uri.parse('https://api.github.com/gists/$_gistId'),
+          headers: headers,
+        )
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -289,13 +295,15 @@ class GistSyncService {
   Future<String?> _findExistingGist() async {
     _logger.info('Searching for existing sync Gist...');
 
-    final response = await http.get(
-      Uri.parse('https://api.github.com/gists'),
-      headers: {
-        'Authorization': 'Bearer $_accessToken',
-        'Accept': 'application/vnd.github+json',
-      },
-    );
+    final response = await http
+        .get(
+          Uri.parse('https://api.github.com/gists'),
+          headers: {
+            'Authorization': 'Bearer $_accessToken',
+            'Accept': 'application/vnd.github+json',
+          },
+        )
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 200) {
       final gists = jsonDecode(response.body) as List<dynamic>;

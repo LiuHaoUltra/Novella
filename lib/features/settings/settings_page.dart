@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
 import 'package:novella/features/settings/source_code_page.dart';
+import 'package:novella/features/settings/log_viewer_page.dart';
 import 'package:novella/features/settings/sync_settings_section.dart';
 import 'package:novella/features/book/book_detail_page.dart'
     show BookDetailPageState;
@@ -135,10 +136,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = AppSettings(
       fontSize: prefs.getDouble('setting_fontSize') ?? 18.0,
       theme: prefs.getString('setting_theme') ?? 'system',
-      version:
-          packageInfo.buildNumber.isEmpty
-              ? packageInfo.version
-              : '${packageInfo.version}+${packageInfo.buildNumber}',
+      version: packageInfo.version,
       convertType: prefs.getString('setting_convertType') ?? 'none',
       showChapterNumber: prefs.getBool('setting_showChapterNumber') ?? true,
       fontCacheEnabled: prefs.getBool('setting_fontCacheEnabled') ?? true,
@@ -670,6 +668,20 @@ class SettingsPage extends ConsumerWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => const SourceCodePage(),
+                  ),
+                );
+              },
+            ),
+
+            // 调试日志
+            ListTile(
+              leading: const Icon(Icons.bug_report),
+              title: const Text('调试日志'),
+              trailing: const Icon(Icons.chevron_right, size: 20),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const LogViewerPage(),
                   ),
                 );
               },

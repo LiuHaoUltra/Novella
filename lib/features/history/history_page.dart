@@ -51,14 +51,6 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
     }
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 前台恢复时刷新历史
-    if (state == AppLifecycleState.resumed && mounted) {
-      _fetchHistory(force: true);
-    }
-  }
-
   /// 外部刷新历史方法
   void refresh() {
     _fetchHistory(force: true);

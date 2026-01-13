@@ -23,7 +23,7 @@ enum SyncStatus {
 
 /// 同步管理器 (核心协调逻辑)
 /// 整合 GistSyncService, SyncCrypto, DataServices
-class SyncManager with WidgetsBindingObserver {
+class SyncManager with ChangeNotifier, WidgetsBindingObserver {
   static final Logger _logger = Logger('SyncManager');
   static final SyncManager _instance = SyncManager._internal();
 
@@ -55,24 +55,31 @@ class SyncManager with WidgetsBindingObserver {
   Timer? _syncDebounceTimer;
   static const _syncDebounceDelay = Duration(seconds: 20);
 
+  // 自动重试机制
+  int _retryCount = 0;
+  static const _maxRetries = 3;
+  DateTime? _lastFailureTime;
+
   /// 当前状态
   SyncStatus get status => _status;
   DateTime? get lastSyncTime => _lastSyncTime;
   String? get errorMessage => _errorMessage;
   bool get isConnected => _gistService.isConnected;
 
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 退后台/关闭时立即同步
-    // 加入 1秒 延时，确保 ReaderPage 等其他组件有时间保存数据 (Race Condition Fix)
+    // 500ms 延时确保 SharedPreferences 写入完成 (优化自1秒)
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       _logger.info('App state $state, waiting for data flush before sync...');
-      Future.delayed(const Duration(seconds: 1), () {
+      Future.delayed(const Duration(milliseconds: 500), () {
         _logger.info('Triggering immediate sync after flush...');
         triggerSync(immediate: true);
       });
@@ -90,6 +97,7 @@ class SyncManager with WidgetsBindingObserver {
     if (token != null) {
       _gistService.setAccessToken(token, gistId: gistId);
       _status = SyncStatus.idle;
+      notifyListeners();
 
       if (lastSyncStr != null) {
         _lastSyncTime = DateTime.tryParse(lastSyncStr);
@@ -105,6 +113,7 @@ class SyncManager with WidgetsBindingObserver {
       }
     } else {
       _status = SyncStatus.disconnected;
+      notifyListeners();
       _logger.info('Sync manager initialized, not connected');
     }
   }
@@ -125,6 +134,7 @@ class SyncManager with WidgetsBindingObserver {
     // 保存 token
     await _storage.write(key: _keyGithubToken, value: token);
     _status = SyncStatus.idle;
+    notifyListeners();
 
     _logger.info('Device flow completed, connected to GitHub');
     return true;
@@ -156,6 +166,7 @@ class SyncManager with WidgetsBindingObserver {
     _status = SyncStatus.disconnected;
     _cachedKey = null;
     _cachedSalt = null;
+    notifyListeners();
     _logger.info('Disconnected from GitHub');
   }
 
@@ -165,16 +176,42 @@ class SyncManager with WidgetsBindingObserver {
     if (password == null) {
       throw Exception('请先设置同步密码');
     }
+    // 手动同步时重置重试计数器
+    _retryCount = 0;
+    _lastFailureTime = null;
     await _performSync(password);
   }
+
+  int _pendingSyncCount = 0; // 挂起的同步请求计数
+  static const _maxPendingBeforeDrop = 2; // 超过此值仅执行最后一次
 
   /// 触发同步 (可选立即)
   /// [immediate] 退后台时为 true
   void triggerSync({bool immediate = false}) {
-    // 仅在已连接状态下触发，且当前不在同步中（防止循环）
-    if (!_gistService.isConnected || _isSyncing) return;
+    // 仅在已连接状态下触发
+    if (!_gistService.isConnected) return;
+
+    // 检查是否应该重置重试计数器 (5分钟冷却期)
+    if (_shouldResetRetryCount()) {
+      _retryCount = 0;
+      _lastFailureTime = null;
+    }
 
     _syncDebounceTimer?.cancel();
+
+    // 如果正在同步，累加挂起请求计数
+    if (_isSyncing) {
+      _pendingSyncCount++;
+      if (_pendingSyncCount > _maxPendingBeforeDrop) {
+        _logger.info(
+          'Sync in progress, pending count: $_pendingSyncCount '
+          '(will merge into final sync)',
+        );
+      } else {
+        _logger.info('Sync in progress, queuing pending sync request...');
+      }
+      return;
+    }
 
     if (immediate) {
       _runSyncTask();
@@ -184,6 +221,13 @@ class SyncManager with WidgetsBindingObserver {
     _syncDebounceTimer = Timer(_syncDebounceDelay, () {
       _runSyncTask();
     });
+  }
+
+  /// 检查是否应该重置重试计数器
+  bool _shouldResetRetryCount() {
+    if (_lastFailureTime == null) return true;
+    final elapsed = DateTime.now().difference(_lastFailureTime!);
+    return elapsed.inMinutes >= 5; // 5 分钟冷却期
   }
 
   Future<void> _runSyncTask() async {
@@ -209,6 +253,7 @@ class SyncManager with WidgetsBindingObserver {
     _isSyncing = true;
     _status = SyncStatus.syncing;
     _errorMessage = null;
+    notifyListeners();
 
     try {
       // 1. 收集本地
@@ -297,15 +342,65 @@ class SyncManager with WidgetsBindingObserver {
       await prefs.setString(_keyLastSyncTime, _lastSyncTime!.toIso8601String());
 
       _status = SyncStatus.idle;
+      _retryCount = 0; // 成功后重置重试计数
+      _lastFailureTime = null;
       _logger.info('Sync completed successfully');
+      notifyListeners();
     } catch (e) {
       _status = SyncStatus.error;
       _errorMessage = e.toString();
-      _logger.severe('Sync failed: $e');
-      rethrow;
+      _lastFailureTime = DateTime.now();
+
+      // 判断是否应该重试
+      final shouldRetry = _shouldRetryError(e);
+
+      if (shouldRetry && _retryCount < _maxRetries) {
+        _retryCount++;
+        final delay = Duration(seconds: 5 * _retryCount);
+        _logger.warning(
+          'Sync failed ($_retryCount/$_maxRetries), '
+          'retrying in ${delay.inSeconds}s: $e',
+        );
+        notifyListeners();
+        Future.delayed(delay, () => _runSyncTask());
+      } else if (!shouldRetry) {
+        _logger.severe('Sync failed with non-retryable error: $e');
+        notifyListeners();
+        rethrow;
+      } else {
+        _logger.severe('Sync failed after $_maxRetries retries: $e');
+        notifyListeners();
+        rethrow;
+      }
     } finally {
       _isSyncing = false;
+      // 如果有挂起的同步请求，执行最后一次同步
+      if (_pendingSyncCount > 0) {
+        final count = _pendingSyncCount;
+        _pendingSyncCount = 0;
+        _logger.info(
+          'Processing $count pending sync requests as one final sync',
+        );
+        // 使用 microtask 避免栈溢出
+        Future.microtask(() => _runSyncTask());
+      }
     }
+  }
+
+  /// 判断错误是否应该自动重试
+  bool _shouldRetryError(dynamic error) {
+    final errorMsg = error.toString().toLowerCase();
+
+    // 不重试：密码/认证错误
+    if (errorMsg.contains('密码') ||
+        errorMsg.contains('解密失败') ||
+        errorMsg.contains('unauthorized') ||
+        errorMsg.contains('token')) {
+      return false;
+    }
+
+    // 重试：网络、超时、冲突等其他错误
+    return true;
   }
 
   /// 从 GitHub 恢复数据
@@ -468,6 +563,7 @@ class SyncManager with WidgetsBindingObserver {
             await _bookMarkService.setBookMark(
               bookId,
               BookMarkStatus.values[status],
+              skipSync: true, // 避免从云端恢复数据时循环触发同步
             );
           }
         }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:novella/core/sync/sync_manager.dart';
+import 'package:novella/core/logging/log_buffer_service.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/rust/frb_generated.dart';
@@ -30,6 +31,9 @@ String? rustLibInitError;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化日志缓冲服务（尽早启动以捕获所有日志）
+  LogBufferService.init();
 
   developer.log('WidgetsInitialized', name: 'Flutter');
   developer.log(
