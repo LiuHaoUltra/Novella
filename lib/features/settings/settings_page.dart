@@ -10,11 +10,13 @@ import 'package:novella/features/book/book_detail_page.dart'
     show BookDetailPageState;
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'dart:io' show Platform;
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// 设置状态模型
 class AppSettings {
   final double fontSize;
   final String theme; // 'system'（系统）, 'light'（浅色）, 'dark'（深色）
+  final String version; // App 版本号
   final String convertType; // 'none'（关闭）, 't2s'（繁转简）, 's2t'（简转繁）
   final bool showChapterNumber;
   final bool fontCacheEnabled;
@@ -44,6 +46,7 @@ class AppSettings {
   const AppSettings({
     this.fontSize = 18.0,
     this.theme = 'system',
+    this.version = '', // 默认空，加载后更新
     this.convertType = 'none',
     this.showChapterNumber = true,
     this.fontCacheEnabled = true,
@@ -64,6 +67,7 @@ class AppSettings {
   AppSettings copyWith({
     double? fontSize,
     String? theme,
+    String? version,
     String? convertType,
     bool? showChapterNumber,
     bool? fontCacheEnabled,
@@ -83,6 +87,7 @@ class AppSettings {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
       theme: theme ?? this.theme,
+      version: version ?? this.version,
       convertType: convertType ?? this.convertType,
       showChapterNumber: showChapterNumber ?? this.showChapterNumber,
       fontCacheEnabled: fontCacheEnabled ?? this.fontCacheEnabled,
@@ -121,6 +126,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final packageInfo = await PackageInfo.fromPlatform();
+
     developer.log(
       'Loaded settings: ignoreJapanese=${prefs.getBool('setting_ignoreJapanese')}, ignoreAI=${prefs.getBool('setting_ignoreAI')}',
       name: 'Settings',
@@ -128,6 +135,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = AppSettings(
       fontSize: prefs.getDouble('setting_fontSize') ?? 18.0,
       theme: prefs.getString('setting_theme') ?? 'system',
+      version:
+          packageInfo.buildNumber.isEmpty
+              ? packageInfo.version
+              : '${packageInfo.version}+${packageInfo.buildNumber}',
       convertType: prefs.getString('setting_convertType') ?? 'none',
       showChapterNumber: prefs.getBool('setting_showChapterNumber') ?? true,
       fontCacheEnabled: prefs.getBool('setting_fontCacheEnabled') ?? true,
@@ -645,10 +656,10 @@ class SettingsPage extends ConsumerWidget {
             // 关于区域
             _buildSectionHeader(context, '关于'),
 
-            const ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('版本'),
-              subtitle: Text('1.0.0'),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('版本'),
+              subtitle: Text(settings.version),
             ),
 
             ListTile(
