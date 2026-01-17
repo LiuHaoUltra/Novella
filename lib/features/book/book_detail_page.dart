@@ -702,15 +702,28 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       }
 
       // 对比阅读进度（仅章节号）
+      // 只有服务端章节号 > 本地章节号时才更新
+      // 避免覆盖用户刚阅读后保存的最新进度
       bool positionChanged = false;
       if (serverPosition != null) {
         final currentPos = await _progressService.getLocalScrollPosition(
           widget.bookId,
         );
 
-        // 只要章节不同（无论前后）就更新，确保多端同步
-        positionChanged =
-            currentPos == null || serverPosition.sortNum != currentPos.sortNum;
+        // 仅当服务端章节号严格大于本地时才更新
+        // 这样可以避免从阅读器返回后被旧服务端数据覆盖
+        if (currentPos == null) {
+          positionChanged = true;
+        } else if (serverPosition.sortNum > currentPos.sortNum) {
+          positionChanged = true;
+          _logger.info(
+            'Background sync: server chapter (${serverPosition.sortNum}) > local (${currentPos.sortNum}), updating',
+          );
+        } else {
+          _logger.info(
+            'Background sync: keeping local position (ch${currentPos.sortNum}), server has ch${serverPosition.sortNum}',
+          );
+        }
 
         if (positionChanged) {
           _logger.info(
@@ -922,69 +935,70 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
+      showDragHandle: true,
       builder:
           (context) => SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      '标记此书籍',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Text(
+                    '标记此书籍',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  // Subtitle
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      '选择当前状态',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                ),
+                // Subtitle
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    '选择当前状态',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // Options
+                ),
+                // Options
+                _buildMarkOption(
+                  context,
+                  BookMarkStatus.toRead,
+                  Icons.schedule,
+                  '待读',
+                  colorScheme,
+                ),
+                _buildMarkOption(
+                  context,
+                  BookMarkStatus.reading,
+                  Icons.auto_stories,
+                  '在读',
+                  colorScheme,
+                ),
+                _buildMarkOption(
+                  context,
+                  BookMarkStatus.finished,
+                  Icons.check_circle_outline,
+                  '已读',
+                  colorScheme,
+                ),
+                // Clear mark option if already marked
+                if (_currentMark != BookMarkStatus.none)
                   _buildMarkOption(
                     context,
-                    BookMarkStatus.toRead,
-                    Icons.schedule,
-                    '待读',
+                    BookMarkStatus.none,
+                    Icons.clear,
+                    '清除标记',
                     colorScheme,
                   ),
-                  _buildMarkOption(
-                    context,
-                    BookMarkStatus.reading,
-                    Icons.auto_stories,
-                    '在读',
-                    colorScheme,
-                  ),
-                  _buildMarkOption(
-                    context,
-                    BookMarkStatus.finished,
-                    Icons.check_circle_outline,
-                    '已读',
-                    colorScheme,
-                  ),
-                  // Clear mark option if already marked
-                  if (_currentMark != BookMarkStatus.none)
-                    _buildMarkOption(
-                      context,
-                      BookMarkStatus.none,
-                      Icons.clear,
-                      '清除标记',
-                      colorScheme,
-                    ),
-                ],
-              ),
+                const SizedBox(height: 16),
+              ],
             ),
           ),
     );
@@ -999,7 +1013,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   ) {
     final isSelected = _currentMark == status;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: Icon(
         icon,
         color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,

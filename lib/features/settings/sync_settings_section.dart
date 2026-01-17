@@ -175,41 +175,43 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     int remainingSeconds = flowData.expiresIn;
     final expireTime = DateTime.now().add(
       Duration(seconds: flowData.expiresIn),
-    ); // 计算过期时间
+    );
 
     // 使用 ValueNotifier 控制对话框状态
     final dialogClosed = ValueNotifier<bool>(false);
     NavigatorState? navigator;
-    Timer? timer; // UI 倒计时定时器
+    Timer? timer;
 
     // 在对话框显示后启动轮询
     Future<void> startPolling() async {
       try {
-        final result = await _syncManager.completeDeviceFlow(
-          flowData,
-          // 移除 onTick，不再依赖轮询回调更新 UI
-        );
+        final result = await _syncManager.completeDeviceFlow(flowData);
         success = result;
       } catch (e) {
         success = false;
       } finally {
-        timer?.cancel(); // 停止倒计时
+        timer?.cancel();
         if (!dialogClosed.value && navigator?.mounted == true) {
           navigator?.pop();
         }
       }
     }
 
-    await showDialog(
+    await showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        // 保存 navigator 引用
-        navigator = Navigator.of(dialogContext);
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        navigator = Navigator.of(sheetContext);
         bool pollStarted = false;
 
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (ctx, setSheetState) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            final textTheme = Theme.of(ctx).textTheme;
+
             // 确保只启动一次轮询和定时器
             if (!pollStarted) {
               pollStarted = true;
@@ -227,8 +229,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                   t.cancel();
                 }
 
-                // 只有当秒数变化时才刷新（其实每秒都会变）
-                setDialogState(() {
+                setSheetState(() {
                   remainingSeconds = remaining > 0 ? remaining : 0;
                 });
               });
@@ -237,74 +238,116 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
               Future.microtask(() => startPolling());
             }
 
-            return AlertDialog(
-              title: const Text('连接 GitHub'),
-              content: Column(
+            return SafeArea(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('请在浏览器中访问：'),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    flowData.verificationUri,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
+                  // 标题
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Text(
+                      '连接 GitHub',
+                      style: textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  // 副标题
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text(
+                      '请在浏览器中访问以下链接并输入验证码',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  // 链接
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SelectableText(
+                      flowData.verificationUri,
+                      style: TextStyle(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('然后输入验证码：'),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        flowData.userCode,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2,
+                  // 验证码
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Text(
+                          flowData.userCode,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 2,
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.copy, size: 20),
-                        onPressed: () {
-                          Clipboard.setData(
-                            ClipboardData(text: flowData.userCode),
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('已复制验证码')),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '剩余时间: ${remainingSeconds ~/ 60}:${(remainingSeconds % 60).toString().padLeft(2, '0')}',
-                    style: TextStyle(
-                      color:
-                          remainingSeconds < 60
-                              ? Theme.of(context).colorScheme.error
-                              : null,
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.copy, size: 20),
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: flowData.userCode),
+                            );
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(content: Text('已复制验证码')),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  // 倒计时
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '剩余时间: ${remainingSeconds ~/ 60}:${(remainingSeconds % 60).toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        color: remainingSeconds < 60 ? colorScheme.error : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  // 底部按钮
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              timer?.cancel();
+                              dialogClosed.value = true;
+                              navigator?.pop();
+                            },
+                            child: const Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              launchUrl(Uri.parse(flowData.verificationUri));
+                            },
+                            child: const Text('打开浏览器'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    launchUrl(Uri.parse(flowData.verificationUri));
-                  },
-                  child: const Text('打开浏览器'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    dialogClosed.value = true;
-                    Navigator.of(dialogContext).pop();
-                  },
-                  child: const Text('取消'),
-                ),
-              ],
             );
           },
         );
@@ -319,74 +362,129 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
     final controller = TextEditingController();
     String? errorText;
 
-    await showDialog(
+    await showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('设置同步密码'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('此密码用于加密同步数据。'),
-                  const Text(
-                    '请牢记密码，忘记将无法恢复数据！',
-                    style: TextStyle(color: Colors.orange),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: controller,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: '密码 (大小写字母+数字, 8-32位)',
-                      errorText: errorText,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ActionChip(
-                        avatar: const Icon(Icons.vpn_key, size: 16),
-                        label: const Text('生成并复制强密码'),
-                        onPressed: () {
-                          final newPassword =
-                              SyncCrypto.generateSecurePassword();
-                          controller.text = newPassword;
-                          Clipboard.setData(ClipboardData(text: newPassword));
-                          setDialogState(() {
-                            if (SyncCrypto.isValidPassword(newPassword)) {
-                              errorText = '已生成强密码并复制到剪贴板！';
-                            }
-                          });
-                        },
+          builder: (ctx, setSheetState) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            final textTheme = Theme.of(ctx).textTheme;
+            final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 标题
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () async {
-                    final password = controller.text;
-                    if (!SyncCrypto.isValidPassword(password)) {
-                      setDialogState(() {
-                        errorText = '需包含大小写字母和数字，8-32位';
-                      });
-                      return;
-                    }
-                    await _syncManager.setSyncPassword(password);
-                    if (dialogContext.mounted) {
-                      Navigator.of(dialogContext).pop();
-                    }
-                  },
-                  child: const Text('确定'),
+                      child: Text(
+                        '设置同步密码',
+                        style: textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    // 副标题
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                      child: Text(
+                        '此密码用于加密同步数据',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Text(
+                        '请牢记密码，忘记将无法恢复数据！',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    // 输入框
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: controller,
+                        obscureText: true,
+                        autofocus: true,
+                        decoration: InputDecoration(
+                          labelText: '密码 (大小写字母+数字, 8-32位)',
+                          errorText: errorText,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // 生成密码按钮
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Wrap(
+                        spacing: 8,
+                        children: [
+                          ActionChip(
+                            avatar: const Icon(Icons.vpn_key, size: 16),
+                            label: const Text('生成并复制强密码'),
+                            onPressed: () {
+                              final newPassword =
+                                  SyncCrypto.generateSecurePassword();
+                              controller.text = newPassword;
+                              Clipboard.setData(
+                                ClipboardData(text: newPassword),
+                              );
+                              setSheetState(() {
+                                if (SyncCrypto.isValidPassword(newPassword)) {
+                                  errorText = '已生成强密码并复制到剪贴板！';
+                                }
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // 底部按钮
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () async {
+                            final password = controller.text;
+                            if (!SyncCrypto.isValidPassword(password)) {
+                              setSheetState(() {
+                                errorText = '需包含大小写字母和数字，8-32位';
+                              });
+                              return;
+                            }
+                            await _syncManager.setSyncPassword(password);
+                            if (sheetContext.mounted) {
+                              Navigator.of(sheetContext).pop();
+                            }
+                          },
+                          child: const Text('确定'),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-              ],
+              ),
             );
           },
         );
@@ -415,23 +513,72 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
   }
 
   Future<void> _handleDisconnect() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('断开连接'),
-            content: const Text('断开后需重新授权才能同步。已保存的同步密码会保留。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('取消'),
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        final textTheme = Theme.of(sheetContext).textTheme;
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 标题
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Text(
+                  '断开连接',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('断开'),
+              // 副标题
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '断开后需重新授权才能同步。已保存的同步密码会保留。',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
+              const SizedBox(height: 12),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(sheetContext, false),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(sheetContext, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colorScheme.error,
+                        ),
+                        child: const Text('断开'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
+        );
+      },
     );
 
     if (confirmed == true) {

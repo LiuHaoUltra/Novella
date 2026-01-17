@@ -165,23 +165,34 @@ class AuthService {
   }
 
   /// 尝试使用存储的刷新令牌自动登录
+  /// 会实际调用 API 验证 refresh token 是否有效
   Future<bool> tryAutoLogin() async {
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString('refresh_token');
 
-    if (refreshToken != null && refreshToken.isNotEmpty) {
-      _logger.info('Found refresh token, attempting auto-login...');
-      // 初始化 SignalR
-      try {
-        await _signalRService.init();
-        return true;
-      } catch (e) {
-        _logger.warning('Auto-login SignalR init failed: $e');
-        // 即使 SignalR 失败（如网络问题），仍保留令牌
-        // We might want to let user into app and retry connection there.
-        return true;
-      }
+    if (refreshToken == null || refreshToken.isEmpty) {
+      _logger.info('No refresh token found');
+      return false;
     }
-    return false;
+
+    _logger.info('Found refresh token, attempting to refresh session...');
+
+    // 尝试刷新 session token 来验证 refresh token 有效性
+    final refreshSuccess = await _refreshSessionToken(refreshToken);
+    if (!refreshSuccess) {
+      _logger.warning('Failed to refresh session token, token may be invalid');
+      return false;
+    }
+
+    // 初始化 SignalR
+    try {
+      await _signalRService.init();
+      _logger.info('Auto-login successful');
+      return true;
+    } catch (e) {
+      _logger.warning('Auto-login SignalR init failed: $e');
+      // SignalR 失败但 token 有效，仍然返回 true
+      return true;
+    }
   }
 }

@@ -59,6 +59,7 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   pointycastle: ^3.9.1
   package_info_plus: ^8.3.0
+  flutter_inappwebview: 6.1.5
 
 dev_dependencies:
   flutter_test:

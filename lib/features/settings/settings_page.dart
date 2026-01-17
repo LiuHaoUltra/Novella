@@ -7,6 +7,8 @@ import 'package:novella/main.dart' show rustLibInitialized, rustLibInitError;
 import 'package:novella/features/settings/source_code_page.dart';
 import 'package:novella/features/settings/log_viewer_page.dart';
 import 'package:novella/features/settings/sync_settings_section.dart';
+import 'package:novella/features/auth/login_page.dart';
+import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/features/book/book_detail_page.dart'
     show BookDetailPageState;
 import 'package:novella/data/services/book_info_cache_service.dart';
@@ -748,99 +750,214 @@ class SettingsPage extends ConsumerWidget {
   }
 
   void _showLogoutDialog(BuildContext context) {
-    showDialog(
+    final syncManager = SyncManager();
+    final isGistConnected = syncManager.isConnected;
+
+    showModalBottomSheet(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('退出登录'),
-            content: const Text('确认退出？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        final textTheme = Theme.of(sheetContext).textTheme;
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 标题
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Text(
+                  '退出登录',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
-              FilledButton(
-                onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('auth_token');
-                  await prefs.remove('refresh_token');
-                  if (context.mounted) {
-                    Navigator.of(context).popUntil((route) => route.isFirst);
-                  }
-                },
-                child: const Text('确定'),
+              // 副标题
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  isGistConnected ? '请先断开 GitHub 连接后再退出登录' : '确认退出当前账号？',
+                  style: textTheme.bodySmall?.copyWith(
+                    color:
+                        isGistConnected
+                            ? colorScheme.error
+                            : colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
+              const SizedBox(height: 12),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed:
+                            isGistConnected
+                                ? null
+                                : () async {
+                                  // 先关闭底部弹窗
+                                  Navigator.pop(sheetContext);
+
+                                  // 清除 token
+                                  final prefs =
+                                      await SharedPreferences.getInstance();
+                                  await prefs.remove('auth_token');
+                                  await prefs.remove('refresh_token');
+
+                                  // 跳转到登录页
+                                  if (context.mounted) {
+                                    Navigator.of(context).pushAndRemoveUntil(
+                                      MaterialPageRoute(
+                                        builder: (_) => const LoginPage(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
+                                },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colorScheme.error,
+                          disabledBackgroundColor: colorScheme.error.withValues(
+                            alpha: 0.3,
+                          ),
+                        ),
+                        child: const Text('退出'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
+        );
+      },
     );
   }
 
   void _showClearCacheDialog(BuildContext context) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            icon: Icon(
-              Icons.delete_forever,
-              color: Theme.of(context).colorScheme.error,
-              size: 48,
-            ),
-            title: const Text('清除字体缓存'),
-            content: const Text('将删除所有缓存字体，下次阅读需重新加载。'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  Navigator.pop(dialogContext);
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        final textTheme = Theme.of(sheetContext).textTheme;
 
-                  // 显示加载指示器
-                  final scaffold = ScaffoldMessenger.of(context);
-                  scaffold.showSnackBar(
-                    const SnackBar(
-                      content: Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                          SizedBox(width: 16),
-                          Text('清除中'),
-                        ],
-                      ),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-
-                  // 清除缓存
-                  final deletedCount = await FontManager().clearAllCaches();
-
-                  // 显示结果
-                  scaffold.hideCurrentSnackBar();
-                  scaffold.showSnackBar(
-                    SnackBar(
-                      content: Text('已清除 $deletedCount 项'),
-                      behavior: SnackBarBehavior.floating,
-                      action: SnackBarAction(
-                        label: '确定',
-                        onPressed: () => scaffold.hideCurrentSnackBar(),
-                      ),
-                    ),
-                  );
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 标题
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
-                child: const Text('清除'),
+                child: Text(
+                  '清除字体缓存',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
+              // 副标题
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '将删除所有缓存字体，下次阅读需重新加载',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 底部按钮
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () async {
+                          Navigator.pop(sheetContext);
+
+                          // 显示加载指示器
+                          final scaffold = ScaffoldMessenger.of(context);
+                          scaffold.showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: 16),
+                                  Text('清除中'),
+                                ],
+                              ),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+
+                          // 清除缓存
+                          final deletedCount =
+                              await FontManager().clearAllCaches();
+
+                          // 显示结果
+                          scaffold.hideCurrentSnackBar();
+                          scaffold.showSnackBar(
+                            SnackBar(
+                              content: Text('已清除 $deletedCount 项'),
+                              behavior: SnackBarBehavior.floating,
+                              action: SnackBarAction(
+                                label: '确定',
+                                onPressed: () => scaffold.hideCurrentSnackBar(),
+                              ),
+                            ),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colorScheme.error,
+                        ),
+                        child: const Text('清除'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
           ),
+        );
+      },
     );
   }
 

@@ -217,9 +217,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
-  // 标记进度是否成功恢复
-  bool _positionRestored = false;
-
   /// 内容加载后恢复进度
   Future<void> _restoreScrollPosition() async {
     if (_initialScrollDone) return;
@@ -271,12 +268,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             'percent=${(scrollPercent * 100).toStringAsFixed(1)}% (frame $frameCount)',
           );
           _scrollController.jumpTo(targetScroll);
-          _positionRestored = true;
         } else if (maxScroll == 0) {
           _logger.info(
             'Content too short for scrolling (maxScroll=0), position restore skipped',
           );
-          _positionRestored = true; // 短内容视为"恢复成功"
         }
         completer.complete();
         return;
@@ -305,7 +300,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _loading = true;
       _error = null;
       _initialScrollDone = false;
-      _positionRestored = false;
     });
 
     try {
@@ -344,18 +338,32 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           await _restoreScrollPosition();
 
-          // 只有在进度恢复成功或 maxScrollExtent > 0 时才保存
-          // 避免保存错误的 0 位置覆盖正确数据
+          // Bug修复：无论是否恢复进度，都保存当前章节到服务端
+          // 确保点击章节进入后即使不滑动也能同步
           if (mounted && _chapter != null) {
-            if (_positionRestored) {
-              // 恢复成功，不需要立即保存（用户可能会继续阅读）
-              _logger.info(
-                'Position restored successfully, skipping immediate save',
-              );
-            } else if (_scrollController.hasClients &&
+            if (_scrollController.hasClients &&
                 _scrollController.position.maxScrollExtent > 0) {
-              // 布局完成但没有需要恢复的进度（新章节），保存当前位置
-              _saveCurrentPosition();
+              // 布局完成，保存当前位置（包含章节信息）
+              await _saveCurrentPosition();
+              _logger.info(
+                'Chapter loaded, saved position to sync with server',
+              );
+            } else {
+              // 布局未完成但章节已加载，至少同步章节信息
+              await _progressService.saveLocalScrollPosition(
+                bookId: widget.bid,
+                chapterId: _chapter!.id,
+                sortNum: _chapter!.sortNum,
+                scrollPosition: 0.0,
+              );
+              await _progressService.saveReadPosition(
+                bookId: widget.bid,
+                chapterId: _chapter!.id,
+                xPath: 'scroll:0.0000',
+              );
+              _logger.info(
+                'Chapter loaded (no scroll), saved ch${_chapter!.sortNum} to sync',
+              );
             }
           }
         });

@@ -37,12 +37,9 @@ void main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
-      // 状态栏透明
       statusBarColor: Colors.transparent,
-      // 导航栏完全透明
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarDividerColor: Colors.transparent,
-      // [关键] 关闭系统强制的对比度遮罩
       systemNavigationBarContrastEnforced: false,
     ),
   );
@@ -72,31 +69,33 @@ void main() async {
     developer.log('Stack trace: $stack', name: 'Flutter');
   }
 
-  try {
-    developer.log('Initializing WindowManager...', name: 'Flutter');
-    await windowManager.ensureInitialized();
-    developer.log('WindowManager Initialized', name: 'Flutter');
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    try {
+      developer.log('Initializing WindowManager...', name: 'Flutter');
+      await windowManager.ensureInitialized();
+      developer.log('WindowManager Initialized', name: 'Flutter');
 
-    WindowOptions windowOptions = const WindowOptions(
-      size: Size(450, 850),
-      minimumSize: Size(400, 800),
-      maximumSize: Size(500, 1000), // 原型窗口大小限制
-      center: true,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
-      title: 'Novella',
-    );
+      WindowOptions windowOptions = const WindowOptions(
+        size: Size(450, 850),
+        minimumSize: Size(400, 800),
+        maximumSize: Size(500, 1000), // 原型窗口大小限制
+        center: true,
+        backgroundColor: Colors.transparent,
+        skipTaskbar: false,
+        titleBarStyle: TitleBarStyle.normal,
+        title: 'Novella',
+      );
 
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      developer.log('Window Ready to Show', name: 'Flutter');
-      await windowManager.show();
-      await windowManager.focus();
-      developer.log('Window Should be Visible', name: 'Flutter');
-    });
-  } catch (e, stack) {
-    developer.log('Failed to initialize WindowManager: $e', name: 'Flutter');
-    developer.log('$stack', name: 'Flutter');
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        developer.log('Window Ready to Show', name: 'Flutter');
+        await windowManager.show();
+        await windowManager.focus();
+        developer.log('Window Should be Visible', name: 'Flutter');
+      });
+    } catch (e, stack) {
+      developer.log('Failed to initialize WindowManager: $e', name: 'Flutter');
+      developer.log('$stack', name: 'Flutter');
+    }
   }
 
   runApp(const ProviderScope(child: MyApp()));
@@ -164,6 +163,7 @@ class _MyAppState extends ConsumerState<MyApp> {
     return MaterialApp(
       title: 'Novella',
       theme: ThemeData(
+        fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blueGrey,
           brightness: Brightness.light,
@@ -186,6 +186,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         ),
       ),
       darkTheme: ThemeData(
+        fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blueGrey,
           brightness: Brightness.dark,

@@ -1,288 +1,257 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:logging/logging.dart';
-import 'package:novella/core/auth/auth_service.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
-/// 浏览器登录页面
-/// 仅需输入 RefreshToken
-class LoginBrowserPage extends StatefulWidget {
-  const LoginBrowserPage({super.key});
+import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:novella/core/auth/auth_service.dart';
+
+class LoginWebPage extends StatefulWidget {
+  const LoginWebPage({super.key});
 
   @override
-  State<LoginBrowserPage> createState() => _LoginBrowserPageState();
+  State<LoginWebPage> createState() => _LoginWebPageState();
 }
 
-class _LoginBrowserPageState extends State<LoginBrowserPage> {
-  final _logger = Logger('LoginBrowserPage');
-  final _authService = AuthService();
-  final _refreshTokenController = TextEditingController();
-
-  bool _isLoading = false;
-  String? _errorMessage;
-
-  static const String _loginUrl = 'https://www.lightnovel.app/login';
+class _LoginWebPageState extends State<LoginWebPage> {
+  InAppWebViewController? webViewController;
+  final AuthService _authService = AuthService();
+  Timer? _checkTimer;
 
   @override
   void dispose() {
-    _refreshTokenController.dispose();
+    _checkTimer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _openBrowserLogin() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final uri = Uri.parse(_loginUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        _logger.info('Opened login page in system browser');
-      } else {
-        throw Exception('无法打开浏览器');
-      }
-    } catch (e) {
-      _logger.severe('Failed to open browser: $e');
-      if (mounted) {
-        setState(() => _errorMessage = '无法打开浏览器: $e');
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _submitRefreshToken() async {
-    final refreshToken = _refreshTokenController.text.trim();
-
-    if (refreshToken.isEmpty) {
-      setState(() => _errorMessage = '请输入 RefreshToken');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      // 保存 refresh token，随后 AuthService 自动刷新 session token
-      await _authService.saveTokens('', refreshToken);
-      _logger.info('RefreshToken saved, will auto-refresh session token');
-
-      if (mounted) {
-        Navigator.of(
-          context,
-        ).pop<Map<String, String>>({'refreshToken': refreshToken});
-      }
-    } catch (e) {
-      _logger.severe('Failed to save token: $e');
-      if (mounted) {
-        setState(() {
-          _errorMessage = '保存 Token 失败: $e';
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _pasteFromClipboard() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text != null) {
-      _refreshTokenController.text = data!.text!;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('登录'),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        title: const Text("登录并获取 Token"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              if (webViewController != null) {
+                _extractTokenFromIndexedDB(webViewController!);
+              }
+            },
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 说明卡片
-            Card(
-              elevation: 0,
-              color: colorScheme.surfaceContainerHighest,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 24,
-                          color: colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '登录步骤',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    _buildStep(context, '1', '点击下方按钮在浏览器中登录'),
-                    _buildStep(context, '2', '登录成功后，按 F12 打开开发者工具'),
-                    _buildStep(
-                      context,
-                      '3',
-                      '找到 Application → IndexedDB → LightNovelShelf → USER_AUTHENTICATION',
-                    ),
-                    _buildStep(context, '4', '复制 RefreshToken 的值粘贴到下方'),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // 打开浏览器按钮
-            FilledButton.icon(
-              onPressed: _isLoading ? null : _openBrowserLogin,
-              icon: const Icon(Icons.open_in_browser),
-              label: const Text('在浏览器中登录'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 16),
-
-            // Token 输入区域
-            Text(
-              '输入 RefreshToken',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '输入后自动完成会话刷新',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 输入框
-            TextField(
-              controller: _refreshTokenController,
-              decoration: InputDecoration(
-                labelText: 'RefreshToken',
-                hintText: '从浏览器复制的 RefreshToken',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.paste),
-                  onPressed: _pasteFromClipboard,
-                  tooltip: '粘贴',
-                ),
-              ),
-              maxLines: 3,
-              minLines: 1,
-            ),
-            const SizedBox(height: 24),
-
-            // 提交按钮
-            FilledButton(
-              onPressed: _isLoading ? null : _submitRefreshToken,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child:
-                  _isLoading
-                      ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                      : const Text('确认登录'),
-            ),
-
-            // 错误信息
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 16),
-              Card(
-                color: colorScheme.errorContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, color: colorScheme.error),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(color: colorScheme.onErrorContainer),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
+      body: InAppWebView(
+        initialUrlRequest: URLRequest(
+          url: WebUri("https://www.lightnovel.app/login"),
         ),
+        initialSettings: InAppWebViewSettings(
+          // 全平台开启隐身模式
+          // Android: 使用内存级 Cookie，不写磁盘
+          // iOS: 使用 WKWebsiteDataStore.nonPersistent()
+          // Windows: 使用 InPrivate Profile
+          incognito: true,
+
+          // 配合隐身模式，禁用缓存（防止极个别情况写磁盘）
+          cacheEnabled: false,
+
+          // 动态 UA 设置 (Windows 必须伪装成 Edge，移动端伪装成 Pixel)
+          userAgent:
+              Platform.isWindows
+                  ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+                  : "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
+
+          // Android 必须开启混合合成 (解决 GPU 指纹)
+          useHybridComposition: true,
+
+          // 允许 JS 和 数据库 (虽然是隐身的，但 Session 期间需要读写 DB)
+          javaScriptEnabled: true,
+          domStorageEnabled: true, // LocalStorage
+          databaseEnabled: true, // IndexedDB
+          // 禁用第三方 Cookie
+          thirdPartyCookiesEnabled: false,
+          safeBrowsingEnabled: false, // 反爬虫对抗配置
+        ),
+
+        onWebViewCreated: (controller) {
+          webViewController = controller;
+
+          // 注入反指纹脚本
+          _injectAntiFingerprintScripts(controller);
+
+          // 注册 Token 监听
+          controller.addJavaScriptHandler(
+            handlerName: 'tokenHandler',
+            callback: (args) async {
+              if (args.isNotEmpty) {
+                final tokenData = args[0];
+                debugPrint(">>> 成功获取 IndexedDB 数据: $tokenData");
+
+                // 拿到数据后，立即取消定时器，避免重复跳转
+                _checkTimer?.cancel();
+                _checkTimer = null;
+
+                await _handleTokenData(tokenData);
+              }
+            },
+          );
+
+          // 启动轮询
+          // 每 2 秒尝试读取一次数据库
+          _checkTimer = Timer.periodic(const Duration(seconds: 2), (
+            timer,
+          ) async {
+            if (webViewController != null) {
+              await _extractTokenFromIndexedDB(webViewController!);
+            }
+          });
+        },
+
+        onLoadStop: (controller, url) async {
+          await _extractTokenFromIndexedDB(controller);
+        },
       ),
     );
   }
 
-  Widget _buildStep(BuildContext context, String number, String text) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 20,
-            height: 20,
-            decoration: BoxDecoration(
-              color: colorScheme.primary,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onPrimary,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ],
+  // 注入 JS 读取 IndexedDB
+  Future<void> _extractTokenFromIndexedDB(
+    InAppWebViewController controller,
+  ) async {
+    const String jsCode = """
+      (function() {
+        const dbName = 'LightNovelShelf'; 
+        const storeName = 'USER_AUTHENTICATION'; 
+
+        const request = indexedDB.open(dbName);
+
+        request.onerror = function(event) {
+          // 数据库可能还没创建，静默失败即可
+        };
+
+        request.onsuccess = function(event) {
+          const db = event.target.result;
+          
+          if (!db.objectStoreNames.contains(storeName)) {
+            return;
+          }
+
+          const transaction = db.transaction([storeName], 'readonly');
+          const objectStore = transaction.objectStore(storeName);
+
+          const getAllRequest = objectStore.getAll();
+
+          getAllRequest.onsuccess = function(event) {
+            const data = event.target.result;
+            if (data && data.length > 0) {
+              console.log("JS: Found token data, sending to Flutter...");
+              window.flutter_inappwebview.callHandler('tokenHandler', JSON.stringify(data));
+            }
+          };
+        };
+      })();
+    """;
+
+    try {
+      await controller.evaluateJavascript(source: jsCode);
+    } catch (e) {
+      // 忽略执行期间的错误
+    }
+  }
+
+  Future<void> _handleTokenData(dynamic jsonString) async {
+    try {
+      // jsonString 应该是 JSON 字符串
+      final dynamic data = jsonDecode(jsonString);
+
+      String? refreshToken;
+      String? accessToken;
+
+      // 解析数据结构，寻找 Token
+      if (data is List) {
+        if (data.isNotEmpty) {
+          // 遍历查找或取第一个
+          for (final item in data) {
+            if (item is Map) {
+              if (item.containsKey('RefreshToken')) {
+                refreshToken = item['RefreshToken'];
+              }
+              if (item.containsKey('Token')) {
+                accessToken = item['Token'];
+              }
+              if (refreshToken != null) break;
+            } else if (item is String) {
+              refreshToken = item;
+              break;
+            }
+          }
+        }
+      } else if (data is Map) {
+        if (data.containsKey('RefreshToken')) {
+          refreshToken = data['RefreshToken'];
+        }
+        if (data.containsKey('Token')) {
+          accessToken = data['Token'];
+        }
+      }
+
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        // 保存 Token
+        await _authService.saveTokens(accessToken ?? '', refreshToken);
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('登录成功，正在跳转...')));
+          // 返回成功
+          Navigator.of(context).pop({'refreshToken': refreshToken});
+        }
+      }
+    } catch (e) {
+      debugPrint("解析 Token 数据失败: $e");
+    }
+  }
+
+  Future<void> _injectAntiFingerprintScripts(
+    InAppWebViewController controller,
+  ) async {
+    const String script = """
+      (function() {
+        // 移除 navigator.webdriver
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined,
+        });
+
+        // 伪造 Chrome 插件列表 (plugins)
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5],
+        });
+
+        // 伪造 languages
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['zh-CN', 'zh'],
+        });
+
+        // WebGL 指纹混淆 (可选，视情况开启)
+        try {
+          const getParameter = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            // UNMASKED_VENDOR_WEBGL
+            if (parameter === 37445) {
+              return 'Intel Inc.';
+            }
+            // UNMASKED_RENDERER_WEBGL
+            if (parameter === 37446) {
+              return 'Intel Iris OpenGL Engine';
+            }
+            return getParameter(parameter);
+          };
+        } catch (e) {}
+      })();
+    """;
+    await controller.addUserScript(
+      userScript: UserScript(
+        source: script,
+        injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
       ),
     );
   }
