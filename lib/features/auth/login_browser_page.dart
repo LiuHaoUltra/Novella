@@ -17,15 +17,42 @@ class _LoginWebPageState extends State<LoginWebPage> {
   InAppWebViewController? webViewController;
   final AuthService _authService = AuthService();
   Timer? _checkTimer;
+  Timer? _timeoutTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 5分钟后停止自动轮询，避免资源浪费
+    _timeoutTimer = Timer(const Duration(minutes: 5), () {
+      if (mounted && _checkTimer != null) {
+        _checkTimer?.cancel();
+        _checkTimer = null;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("自动轮询已停止，请尝试刷新或重新登录")));
+      }
+    });
+  }
 
   @override
   void dispose() {
     _checkTimer?.cancel();
+    _timeoutTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Windows (伪装 Edge)
+    const String uaWindows =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
+    // Android (伪装 Pixel 7 Pro)
+    const String uaAndroid =
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36";
+    // iOS (伪装 iPhone 15 Pro, iOS 17.4)
+    const String uaIOS =
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("登录并获取 Token"),
@@ -46,30 +73,29 @@ class _LoginWebPageState extends State<LoginWebPage> {
         ),
         initialSettings: InAppWebViewSettings(
           // 全平台开启隐身模式
-          // Android: 使用内存级 Cookie，不写磁盘
-          // iOS: 使用 WKWebsiteDataStore.nonPersistent()
-          // Windows: 使用 InPrivate Profile
           incognito: true,
 
-          // 配合隐身模式，禁用缓存（防止极个别情况写磁盘）
+          // 配合隐身模式，禁用缓存
           cacheEnabled: false,
 
-          // 动态 UA 设置 (Windows 必须伪装成 Edge，移动端伪装成 Pixel)
+          // 三端分离 UA 设置
           userAgent:
               Platform.isWindows
-                  ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
-                  : "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
+                  ? uaWindows
+                  : (Platform.isIOS ? uaIOS : uaAndroid),
 
-          // Android 必须开启混合合成 (解决 GPU 指纹)
+          // iOS 特有配置
+          isInspectable: false, // 生产环境关闭调试
+          sharedCookiesEnabled: false, // 配合隐身模式
+          // Android 必须开启混合合成
           useHybridComposition: true,
 
-          // 允许 JS 和 数据库 (虽然是隐身的，但 Session 期间需要读写 DB)
+          // 基础配置
           javaScriptEnabled: true,
-          domStorageEnabled: true, // LocalStorage
-          databaseEnabled: true, // IndexedDB
-          // 禁用第三方 Cookie
+          domStorageEnabled: true,
+          databaseEnabled: true,
           thirdPartyCookiesEnabled: false,
-          safeBrowsingEnabled: false, // 反爬虫对抗配置
+          safeBrowsingEnabled: false,
         ),
 
         onWebViewCreated: (controller) {
@@ -89,6 +115,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
                 // 拿到数据后，立即取消定时器，避免重复跳转
                 _checkTimer?.cancel();
                 _checkTimer = null;
+                _timeoutTimer?.cancel();
 
                 await _handleTokenData(tokenData);
               }
@@ -214,40 +241,44 @@ class _LoginWebPageState extends State<LoginWebPage> {
   Future<void> _injectAntiFingerprintScripts(
     InAppWebViewController controller,
   ) async {
-    const String script = """
-      (function() {
-        // 移除 navigator.webdriver
+    // 基础脚本：移除 webdriver (所有平台通用)
+    String script = """
+      try {
         Object.defineProperty(navigator, 'webdriver', {
           get: () => undefined,
         });
-
-        // 伪造 Chrome 插件列表 (plugins)
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5],
-        });
-
-        // 伪造 languages
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['zh-CN', 'zh'],
-        });
-
-        // WebGL 指纹混淆 (可选，视情况开启)
-        try {
-          const getParameter = WebGLRenderingContext.prototype.getParameter;
-          WebGLRenderingContext.prototype.getParameter = function(parameter) {
-            // UNMASKED_VENDOR_WEBGL
-            if (parameter === 37445) {
-              return 'Intel Inc.';
-            }
-            // UNMASKED_RENDERER_WEBGL
-            if (parameter === 37446) {
-              return 'Intel Iris OpenGL Engine';
-            }
-            return getParameter(parameter);
-          };
-        } catch (e) {}
-      })();
+      } catch (e) {}
     """;
+
+    // 仅在 Android/Windows 上伪造 Plugins 和 WebGL
+    // iOS Safari 本身就没有插件，如果伪造了反而会被识破
+    if (!Platform.isIOS) {
+      script += """
+        try {
+          // 伪造 Chrome 插件列表
+          Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5],
+          });
+          // 伪造 languages
+          Object.defineProperty(navigator, 'languages', {
+            get: () => ['zh-CN', 'zh'],
+          });
+        } catch (e) {}
+
+        // WebGL 指纹混淆
+        try {
+           const getParameter = WebGLRenderingContext.prototype.getParameter;
+           WebGLRenderingContext.prototype.getParameter = function(parameter) {
+             // UNMASKED_VENDOR_WEBGL
+             if (parameter === 37445) return 'Intel Inc.';
+             // UNMASKED_RENDERER_WEBGL
+             if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+             return getParameter(parameter);
+           };
+        } catch(e) {}
+      """;
+    }
+
     await controller.addUserScript(
       userScript: UserScript(
         source: script,
