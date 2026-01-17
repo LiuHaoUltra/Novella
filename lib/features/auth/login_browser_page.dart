@@ -46,9 +46,9 @@ class _LoginWebPageState extends State<LoginWebPage> {
     // Windows (伪装 Edge)
     const String uaWindows =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
-    // Android (伪装 Pixel 7 Pro)
+    // Android (更新为三星 Galaxy S23, Chrome 120)
     const String uaAndroid =
-        "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36";
+        "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36";
     // iOS (伪装 iPhone 15 Pro, iOS 17.4)
     const String uaIOS =
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1";
@@ -250,32 +250,50 @@ class _LoginWebPageState extends State<LoginWebPage> {
       } catch (e) {}
     """;
 
-    // 仅在 Android/Windows 上伪造 Plugins 和 WebGL
-    // iOS Safari 本身就没有插件，如果伪造了反而会被识破
-    if (!Platform.isIOS) {
+    // Windows 专用：伪造 Plugins/Languages
+    if (Platform.isWindows) {
       script += """
         try {
-          // 伪造 Chrome 插件列表
+          // 伪造 Plugins
           Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5],
+            get: () => [
+              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+              { name: 'Microsoft Edge PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' }
+            ],
           });
-          // 伪造 languages
+          
+          // 伪造 Languages
           Object.defineProperty(navigator, 'languages', {
             get: () => ['zh-CN', 'zh'],
           });
-        } catch (e) {}
 
-        // WebGL 指纹混淆
+          // 补全 window.chrome
+          if (!window.chrome) {
+              window.chrome = { runtime: {} };
+          }
+        } catch (e) {}
+      """;
+    }
+
+    // Android 专用：补全 Chrome 特征
+    if (Platform.isAndroid) {
+      script += """
         try {
-           const getParameter = WebGLRenderingContext.prototype.getParameter;
-           WebGLRenderingContext.prototype.getParameter = function(parameter) {
-             // UNMASKED_VENDOR_WEBGL
-             if (parameter === 37445) return 'Intel Inc.';
-             // UNMASKED_RENDERER_WEBGL
-             if (parameter === 37446) return 'Intel Iris OpenGL Engine';
-             return getParameter(parameter);
-           };
-        } catch(e) {}
+          // 补全 window.chrome
+          if (!window.chrome) {
+            window.chrome = {
+              runtime: {},
+              loadTimes: function() {},
+              csi: function() {},
+              app: {}
+            };
+          }
+          // notification 权限
+          if (!('Notification' in window)) {
+            window.Notification = { permission: 'default' };
+          }
+        } catch (e) {}
       """;
     }
 
