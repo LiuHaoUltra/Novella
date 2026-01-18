@@ -12,6 +12,7 @@ import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/rust/frb_generated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 
 // === 加载 Native 库 ===
 // iOS/macOS: 静态链接 (process)
@@ -160,62 +161,94 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
-    return MaterialApp(
-      title: 'Novella',
-      theme: ThemeData(
-        fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueGrey,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        // 科技简约风：优化排版
-        textTheme: const TextTheme(
-          displayLarge: TextStyle(letterSpacing: -1.0),
-          displayMedium: TextStyle(letterSpacing: -0.5),
-        ),
-        // 防止 AppBar 覆盖系统 UI 样式
-        appBarTheme: const AppBarTheme(
-          systemOverlayStyle: SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarDividerColor: Colors.transparent,
-            systemNavigationBarContrastEnforced: false,
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        ColorScheme lightScheme;
+        ColorScheme darkScheme;
+
+        if (settings.useSystemColor &&
+            lightDynamic != null &&
+            darkDynamic != null) {
+          // 使用系统提供的配色方案 (包含变体信息)
+          lightScheme = lightDynamic.harmonized();
+          darkScheme = darkDynamic.harmonized();
+        } else {
+          // 使用自定义种子色或回退逻辑
+          final seedColor = Color(settings.seedColorValue);
+          final variantIndex = settings.dynamicSchemeVariant;
+          final variant =
+              variantIndex >= 0 &&
+                      variantIndex < DynamicSchemeVariant.values.length
+                  ? DynamicSchemeVariant.values[variantIndex]
+                  : DynamicSchemeVariant.tonalSpot;
+
+          lightScheme = ColorScheme.fromSeed(
+            seedColor: seedColor,
+            brightness: Brightness.light,
+            dynamicSchemeVariant: variant,
+          );
+          darkScheme = ColorScheme.fromSeed(
+            seedColor: seedColor,
+            brightness: Brightness.dark,
+            dynamicSchemeVariant: variant,
+          );
+        }
+
+        // 应用 OLED 黑优化
+        if (settings.oledBlack) {
+          darkScheme = darkScheme.copyWith(
+            surface: Colors.black,
+            surfaceContainer: Colors.black,
+            surfaceContainerHigh: const Color(0xFF121212),
+          );
+        }
+
+        return MaterialApp(
+          title: 'Novella',
+          theme: ThemeData(
+            fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
+            colorScheme: lightScheme,
+            useMaterial3: true,
+            textTheme: const TextTheme(
+              displayLarge: TextStyle(letterSpacing: -1.0),
+              displayMedium: TextStyle(letterSpacing: -0.5),
+            ),
+            appBarTheme: const AppBarTheme(
+              systemOverlayStyle: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.dark,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarDividerColor: Colors.transparent,
+                systemNavigationBarContrastEnforced: false,
+              ),
+            ),
           ),
-        ),
-      ),
-      darkTheme: ThemeData(
-        fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueGrey,
-          brightness: Brightness.dark,
-        ).copyWith(
-          surface: settings.oledBlack ? Colors.black : null,
-          surfaceContainer: settings.oledBlack ? Colors.black : null,
-          surfaceContainerHigh:
-              settings.oledBlack ? const Color(0xFF121212) : null,
-        ),
-        scaffoldBackgroundColor: settings.oledBlack ? Colors.black : null,
-        useMaterial3: true,
-        // 防止 AppBar 覆盖系统 UI 样式
-        appBarTheme: const AppBarTheme(
-          systemOverlayStyle: SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.light,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarDividerColor: Colors.transparent,
-            systemNavigationBarContrastEnforced: false,
+          darkTheme: ThemeData(
+            fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
+            colorScheme: darkScheme,
+            scaffoldBackgroundColor: settings.oledBlack ? Colors.black : null,
+            useMaterial3: true,
+            appBarTheme: const AppBarTheme(
+              systemOverlayStyle: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.light,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarDividerColor: Colors.transparent,
+                systemNavigationBarContrastEnforced: false,
+              ),
+            ),
           ),
-        ),
-      ),
-      themeMode: _getThemeMode(settings.theme),
-      home:
-          _loading
-              ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-              : _agreed
-              ? const LoginPage()
-              : DisclaimerPage(onAgree: _agree),
+          themeMode: _getThemeMode(settings.theme),
+          home:
+              _loading
+                  ? const Scaffold(
+                    body: Center(child: CircularProgressIndicator()),
+                  )
+                  : _agreed
+                  ? const LoginPage()
+                  : DisclaimerPage(onAgree: _agree),
+        );
+      },
     );
   }
 }

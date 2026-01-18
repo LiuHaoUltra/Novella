@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +15,7 @@ import 'package:novella/features/book/book_detail_page.dart'
 import 'package:novella/data/services/book_info_cache_service.dart';
 import 'dart:io' show Platform;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:novella/features/settings/theme_selection_page.dart';
 
 /// 设置状态模型
 class AppSettings {
@@ -35,6 +37,10 @@ class AppSettings {
   final bool bookDetailCacheEnabled;
   final List<String> bookTypeBadgeScopes;
   final bool coverColorExtraction; // 封面取色开关
+  final int seedColorValue; // 主题种子色 ARGB 值
+  final bool useSystemColor; // 是否使用系统动态颜色
+  final int dynamicSchemeVariant; // 动态配色方案变体索引 (0: TonalSpot, etc)
+  final bool useCustomTheme; // 是否使用自定义主题模式 (Tab 状态)
 
   static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
   static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
@@ -64,7 +70,11 @@ class AppSettings {
     this.enabledHomeModules = defaultEnabledModules,
     this.bookDetailCacheEnabled = true,
     this.bookTypeBadgeScopes = defaultBookTypeBadgeScopes,
-    this.coverColorExtraction = true, // 默认开启
+    this.coverColorExtraction = false, // 默认关闭
+    this.seedColorValue = 0xFFB71C1C, // 勃艮第红
+    this.useSystemColor = false,
+    this.dynamicSchemeVariant = 0, // 默认: TonalSpot
+    this.useCustomTheme = false, // 默认使用预设 Tab
   });
 
   AppSettings copyWith({
@@ -86,6 +96,10 @@ class AppSettings {
     bool? bookDetailCacheEnabled,
     List<String>? bookTypeBadgeScopes,
     bool? coverColorExtraction,
+    int? seedColorValue,
+    bool? useSystemColor,
+    int? dynamicSchemeVariant,
+    bool? useCustomTheme,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -107,6 +121,11 @@ class AppSettings {
           bookDetailCacheEnabled ?? this.bookDetailCacheEnabled,
       bookTypeBadgeScopes: bookTypeBadgeScopes ?? this.bookTypeBadgeScopes,
       coverColorExtraction: coverColorExtraction ?? this.coverColorExtraction,
+      seedColorValue: seedColorValue ?? this.seedColorValue,
+      useSystemColor: useSystemColor ?? this.useSystemColor,
+      dynamicSchemeVariant:
+          dynamicSchemeVariant ?? (this.dynamicSchemeVariant as int?) ?? 0,
+      useCustomTheme: useCustomTheme ?? (this.useCustomTheme as bool?) ?? false,
     );
   }
 
@@ -124,7 +143,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   @override
   AppSettings build() {
     _loadSettings();
-    return const AppSettings();
+    return AppSettings(
+      useSystemColor: Platform.isAndroid || Platform.isWindows,
+    );
   }
 
   Future<void> _loadSettings() async {
@@ -164,7 +185,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
             AppSettings.defaultBookTypeBadgeScopes,
       ),
       coverColorExtraction:
-          prefs.getBool('setting_coverColorExtraction') ?? true,
+          prefs.getBool('setting_coverColorExtraction') ?? false,
+      seedColorValue: prefs.getInt('setting_seedColorValue') ?? 0xFFB71C1C,
+      // 在 Android 和 Windows 上默认启用系统颜色
+      useSystemColor:
+          prefs.getBool('setting_useSystemColor') ??
+          (Platform.isAndroid || Platform.isWindows),
+      dynamicSchemeVariant: prefs.getInt('setting_dynamicSchemeVariant') ?? 0,
+      useCustomTheme: prefs.getBool('setting_useCustomTheme') ?? false,
     );
   }
 
@@ -199,6 +227,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
       'setting_coverColorExtraction',
       state.coverColorExtraction,
     );
+    await prefs.setInt('setting_seedColorValue', state.seedColorValue);
+    await prefs.setBool('setting_useSystemColor', state.useSystemColor);
+    await prefs.setInt(
+      'setting_dynamicSchemeVariant',
+      state.dynamicSchemeVariant,
+    );
+    await prefs.setBool('setting_useCustomTheme', state.useCustomTheme);
   }
 
   void setFontSize(double size) {
@@ -308,6 +343,35 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   void setBookTypeBadgeScopes(List<String> scopes) {
     state = state.copyWith(bookTypeBadgeScopes: scopes);
+    _save();
+  }
+
+  void setSeedColor(int colorValue) {
+    state = state.copyWith(seedColorValue: colorValue);
+    _save();
+    // 清除缓存以应用新主题色
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
+  }
+
+  void setUseSystemColor(bool value) {
+    state = state.copyWith(useSystemColor: value);
+    _save();
+    // 清除缓存以应用新主题色
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
+  }
+
+  void setDynamicSchemeVariant(int variantIndex) {
+    state = state.copyWith(dynamicSchemeVariant: variantIndex);
+    _save();
+    // 清除缓存以应用新变体
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
+  }
+
+  void setUseCustomTheme(bool useCustom) {
+    state = state.copyWith(useCustomTheme: useCustom);
     _save();
   }
 }
@@ -526,43 +590,33 @@ class SettingsPage extends ConsumerWidget {
             // 外观区域
             _buildSectionHeader(context, '外观'),
 
-            // 主题
+            // 主题与颜色
             ListTile(
               leading: const Icon(Icons.palette_outlined),
-              title: const Text('主题'),
+              title: const Text('主题与颜色'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    const {'system': '系统', 'light': '浅色', 'dark': '深色'}[settings
-                            .theme] ??
-                        '系统',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.secondary,
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      // 使用当前主题的 primary 色（已考虑系统颜色）
+                      color: colorScheme.primary,
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   const Icon(Icons.chevron_right, size: 20),
                 ],
               ),
-              onTap:
-                  () => _showSelectionSheet<String>(
-                    context: context,
-                    title: '主题',
-                    subtitle: '选择应用的整体外观风格',
-                    currentValue: settings.theme,
-                    options: const {
-                      'system': '系统',
-                      'light': '浅色',
-                      'dark': '深色',
-                    },
-                    icons: const {
-                      'system': Icons.auto_mode,
-                      'light': Icons.light_mode,
-                      'dark': Icons.dark_mode,
-                    },
-                    onSelected: (value) => notifier.setTheme(value),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const ThemeSelectionPage(),
                   ),
+                );
+              },
             ),
 
             // 封面取色
