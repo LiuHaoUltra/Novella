@@ -623,7 +623,7 @@ class SettingsPage extends ConsumerWidget {
             SwitchListTile(
               secondary: const Icon(Icons.colorize),
               title: const Text('封面取色'),
-              subtitle: const Text('从封面提取颜色作为背景主题'),
+              subtitle: const Text('从封面提取颜色作为详情页主题'),
               value: settings.coverColorExtraction,
               onChanged: (value) => notifier.setCoverColorExtraction(value),
             ),

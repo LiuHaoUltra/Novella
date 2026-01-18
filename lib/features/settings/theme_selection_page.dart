@@ -536,9 +536,8 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
 
   /// 自定义颜色按钮
   Widget _buildCustomColorButton(ColorScheme colors, Color effectiveSeedColor) {
-    return InkWell(
+    return GestureDetector(
       onTap: () => _showColorPickerSheet(effectiveSeedColor),
-      borderRadius: BorderRadius.circular(16),
       child: Container(
         height: 56,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -794,11 +793,14 @@ class _PixelTabItem extends StatelessWidget {
     return Expanded(
       flex: isSelected ? 6 : 4,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutExpo,
+        duration: Duration(milliseconds: isSelected ? 1000 : 80),
+        curve: isSelected ? Curves.fastLinearToSlowEaseIn : Curves.easeOut,
         margin: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: isSelected ? colors.primaryContainer : Colors.transparent,
+          color:
+              isSelected
+                  ? colors.primaryContainer
+                  : colors.primaryContainer.withValues(alpha: 0),
           borderRadius: BorderRadius.circular(24),
         ),
         child: GestureDetector(
@@ -810,8 +812,11 @@ class _PixelTabItem extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 AnimatedSize(
-                  duration: const Duration(milliseconds: 400),
-                  curve: Curves.easeOutExpo,
+                  duration: Duration(milliseconds: isSelected ? 1000 : 80),
+                  curve:
+                      isSelected
+                          ? Curves.fastLinearToSlowEaseIn
+                          : Curves.easeOut,
                   child:
                       isSelected
                           ? Padding(
