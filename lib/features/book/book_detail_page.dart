@@ -239,6 +239,17 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     _schemeCache.clear();
   }
 
+  // 静态缓存当前书籍信息供 ReaderPage 使用
+  // 退出详情页时自动释放
+  static String? cachedBookName;
+  static List<ChapterInfo>? cachedChapterList;
+
+  /// 清除阅读器缓存
+  static void clearReaderCache() {
+    cachedBookName = null;
+    cachedChapterList = null;
+  }
+
   BookInfo? _bookInfo;
   ReadPosition? _readPosition;
   bool _loading = true;
@@ -321,6 +332,13 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         }
       });
     }
+  }
+
+  @override
+  void dispose() {
+    // 退出详情页时清除阅读器缓存
+    clearReaderCache();
+    super.dispose();
   }
 
   @override
@@ -608,6 +626,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         if (settings.bookDetailCacheEnabled) {
           _cacheService.set(widget.bookId, info);
         }
+        // 缓存书名和章节列表供 ReaderPage 使用
+        cachedBookName = info.title;
+        cachedChapterList = info.chapters;
       }
     } catch (e) {
       _logger.severe('Failed to load book info: $e');

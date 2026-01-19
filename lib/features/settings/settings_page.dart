@@ -41,6 +41,7 @@ class AppSettings {
   final bool useSystemColor; // 是否使用系统动态颜色
   final int dynamicSchemeVariant; // 动态配色方案变体索引 (0: TonalSpot, etc)
   final bool useCustomTheme; // 是否使用自定义主题模式 (Tab 状态)
+  final bool notchedDisplayMode; // 异形屏适配模式（刘海屏/挖孔屏优化）
 
   static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
   static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
@@ -75,6 +76,7 @@ class AppSettings {
     this.useSystemColor = false,
     this.dynamicSchemeVariant = 0, // 默认: TonalSpot
     this.useCustomTheme = false, // 默认使用预设 Tab
+    this.notchedDisplayMode = false, // 默认关闭异形屏适配
   });
 
   AppSettings copyWith({
@@ -100,6 +102,7 @@ class AppSettings {
     bool? useSystemColor,
     int? dynamicSchemeVariant,
     bool? useCustomTheme,
+    bool? notchedDisplayMode,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -126,6 +129,7 @@ class AppSettings {
       dynamicSchemeVariant:
           dynamicSchemeVariant ?? (this.dynamicSchemeVariant as int?) ?? 0,
       useCustomTheme: useCustomTheme ?? (this.useCustomTheme as bool?) ?? false,
+      notchedDisplayMode: notchedDisplayMode ?? this.notchedDisplayMode,
     );
   }
 
@@ -145,6 +149,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _loadSettings();
     return AppSettings(
       useSystemColor: Platform.isAndroid || Platform.isWindows,
+      notchedDisplayMode: false, // 默认关闭异形屏适配
     );
   }
 
@@ -193,6 +198,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
           (Platform.isAndroid || Platform.isWindows),
       dynamicSchemeVariant: prefs.getInt('setting_dynamicSchemeVariant') ?? 0,
       useCustomTheme: prefs.getBool('setting_useCustomTheme') ?? false,
+      notchedDisplayMode: prefs.getBool('setting_notchedDisplayMode') ?? false,
     );
   }
 
@@ -234,6 +240,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       state.dynamicSchemeVariant,
     );
     await prefs.setBool('setting_useCustomTheme', state.useCustomTheme);
+    await prefs.setBool('setting_notchedDisplayMode', state.notchedDisplayMode);
   }
 
   void setFontSize(double size) {
@@ -374,6 +381,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(useCustomTheme: useCustom);
     _save();
   }
+
+  void setNotchedDisplayMode(bool value) {
+    state = state.copyWith(notchedDisplayMode: value);
+    _save();
+  }
 }
 
 /// 设置提供者（Riverpod 3.x 语法）
@@ -478,6 +490,15 @@ class SettingsPage extends ConsumerWidget {
               subtitle: const Text('实验性功能，仅对续读按钮生效'),
               value: settings.cleanChapterTitle,
               onChanged: (value) => notifier.setCleanChapterTitle(value),
+            ),
+
+            // 异形屏适配模式
+            SwitchListTile(
+              secondary: const Icon(Icons.smartphone),
+              title: const Text('异形屏优化'),
+              subtitle: const Text('为刘海屏/挖孔屏优化阅读体验'),
+              value: settings.notchedDisplayMode,
+              onChanged: (value) => notifier.setNotchedDisplayMode(value),
             ),
 
             const Divider(),
