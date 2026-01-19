@@ -849,7 +849,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       const SizedBox(height: 2),
                       // 阅读进度 (时间 · 电量 · 百分比)
                       Text(
-                        '$_timeString · 设备电量 $_batteryLevel% · 本章已读 ${(_lastScrollPercent * 100).toInt()}%',
+                        '$_timeString · 电量 $_batteryLevel% · 本章已读 ${(_lastScrollPercent * 100).toInt()}%',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                           fontSize: 11, // 稍微调小一点以适应更多内容
