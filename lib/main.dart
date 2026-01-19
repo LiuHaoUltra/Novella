@@ -13,6 +13,7 @@ import 'package:novella/src/rust/frb_generated.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 // === 加载 Native 库 ===
 // iOS/macOS: 静态链接 (process)
@@ -205,6 +206,17 @@ class _MyAppState extends ConsumerState<MyApp> {
 
         return MaterialApp(
           title: 'Novella',
+          // 本地化配置（含简体/繁体中文支持）
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('zh', 'CN'), // 简体中文
+            Locale('zh', 'TW'), // 繁体中文
+            Locale('en', ''), // English
+          ],
           theme: ThemeData(
             fontFamily: Platform.isWindows ? 'Microsoft YaHei' : null,
             colorScheme: lightScheme,

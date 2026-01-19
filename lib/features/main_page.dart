@@ -1,3 +1,4 @@
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:novella/features/home/home_page.dart';
 import 'package:novella/features/history/history_page.dart';
@@ -25,63 +26,36 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AdaptiveScaffold(
+      // 主体内容
       body: IndexedStack(index: _currentIndex, children: _pages),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          height: 60,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-          indicatorColor: Theme.of(
-            context,
-          ).colorScheme.primaryContainer.withValues(alpha: 0.5),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return IconThemeData(
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-              );
-            }
-            return IconThemeData(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            );
-          }),
-        ),
-        child: NavigationBar(
-          selectedIndex: _currentIndex,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-          onDestinationSelected: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-            // 切换标签时刷新页面
-            if (index == 1) {
-              _shelfKey.currentState?.refresh();
-            } else if (index == 2) {
-              _historyKey.currentState?.refresh();
-            }
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore),
-              label: '发现',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.bookmark_border),
-              selectedIcon: Icon(Icons.bookmark),
-              label: '书架',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.history_outlined),
-              selectedIcon: Icon(Icons.history),
-              label: '历史',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: '设置',
-            ),
-          ],
-        ),
+      // 自适应底部导航栏
+      bottomNavigationBar: AdaptiveBottomNavigationBar(
+        selectedIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+          // 切换标签时刷新页面
+          if (index == 1) {
+            _shelfKey.currentState?.refresh();
+          } else if (index == 2) {
+            _historyKey.currentState?.refresh();
+          }
+        },
+        items: const [
+          // 发现
+          AdaptiveNavigationDestination(icon: 'safari', label: '发现'),
+          // 书架
+          AdaptiveNavigationDestination(icon: 'bookmark', label: '书架'),
+          // 历史
+          AdaptiveNavigationDestination(
+            icon: 'clock.arrow.circlepath',
+            label: '历史',
+          ),
+          // 设置
+          AdaptiveNavigationDestination(icon: 'gearshape', label: '设置'),
+        ],
       ),
     );
   }

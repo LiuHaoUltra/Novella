@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:developer' as developer;
-import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,10 +14,10 @@ import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:soft_edge_blur/soft_edge_blur.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 
 enum _ReaderLayoutMode { standard, immersive, center }
 
@@ -474,13 +473,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
-    final useFloatingControls = settings.notchedDisplayMode;
-    final double topPadding = MediaQuery.of(context).padding.top;
 
     Widget content = Scaffold(
       body: Stack(
         children: [
-          // 2. 主要内容层
+          // 主要内容层
           Positioned.fill(
             child: GestureDetector(
               onTap: _toggleBars,
@@ -489,105 +486,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       ? const Center(child: CircularProgressIndicator())
                       : _error != null
                       ? _buildErrorView()
-                      : AnimatedBuilder(
-                        animation: _barsAnimController,
-                        child: _buildWebContent(context, settings),
-                        builder: (context, child) {
-                          // 动态计算模糊高度和透明度
-                          // 高度: 收起时适当延长确保渐变自然(状态栏+80)，展开时大幅延伸(+200)
-                          final double blurHeight =
-                              lerpDouble(
-                                topPadding + 80.0,
-                                topPadding + 200.0,
-                                CurvedAnimation(
-                                  parent: _barsAnimController,
-                                  curve: Curves.easeOutCubic,
-                                ).value,
-                              )!;
-
-                          // 透明度: 收起时(0.5)保持较强压暗，展开时(0.7)更深
-                          final double tintAlpha =
-                              lerpDouble(
-                                0.5,
-                                0.7,
-                                CurvedAnimation(
-                                  parent: _barsAnimController,
-                                  curve: Curves.easeOutCubic,
-                                ).value,
-                              )!;
-                          // 动态 Sigma: 随动画从 0 过渡到 30，消除突兀感
-                          final double currentSigma =
-                              lerpDouble(
-                                0.0,
-                                30.0,
-                                CurvedAnimation(
-                                  parent: _barsAnimController,
-                                  curve: Curves.easeOutCubic,
-                                ).value,
-                              )!;
-
-                          return SoftEdgeBlur(
-                            edges: [
-                              EdgeBlur(
-                                type: EdgeType.topEdge,
-                                size: blurHeight,
-                                // 使用动态 sigma 同样实现平滑过渡
-                                sigma: currentSigma,
-                                tintColor: Colors.black.withValues(
-                                  alpha: tintAlpha,
-                                ),
-                                controlPoints: [
-                                  // 控制点固定，不随状态移除，依靠 height 伸缩实现动画
-                                  ControlPoint(
-                                    position: 0.0,
-                                    type: ControlPointType.visible,
-                                  ),
-                                  ControlPoint(
-                                    position: 1.0,
-                                    type: ControlPointType.transparent,
-                                  ),
-                                ],
-                              ),
-                            ],
-                            child: child!,
-                          );
-                        },
-                      ),
+                      : _buildWebContent(context, settings),
             ),
           ),
 
-          // ... (rest of the build method)
-          if (useFloatingControls) ...[
-            // 悬浮模式：顶部毛玻璃功能区
-            _buildFloatingTopBar(context),
-            // 悬浮模式：右下角功能区
-            _buildFloatingBottomControls(context),
-          ] else ...[
-            // 传统模式：顶部栏
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              top:
-                  _barsVisible
-                      ? 0
-                      : -kToolbarHeight - MediaQuery.of(context).padding.top,
-              left: 0,
-              right: 0,
-              child: _buildTopBar(context),
-            ),
-            // 传统模式：底部导航栏
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              bottom:
-                  _barsVisible
-                      ? 0
-                      : -100 - MediaQuery.of(context).padding.bottom,
-              left: 0,
-              right: 0,
-              child: _buildBottomBar(context, settings),
-            ),
-          ],
+          // 悬浮功能区
+          _buildFloatingTopBar(context),
+          _buildFloatingBottomControls(context),
         ],
       ),
     );
@@ -675,10 +580,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               isImg = true;
             }
           }
-          if (isImg)
+          if (isImg) {
             consecutiveImages++;
-          else
+          } else {
             break;
+          }
         }
 
         // 满足条件：开头连续图片>=2 且 总图片数>2
@@ -835,183 +741,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
-  Widget _buildTopBar(BuildContext context) {
-    return Container(
-      height: kToolbarHeight + MediaQuery.of(context).padding.top,
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor.withAlpha(240),
-        border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).dividerColor.withAlpha(20),
-            width: 0.5,
-          ),
-        ),
-      ),
-      child: NavigationToolbar(
-        leading: BackButton(onPressed: () => Navigator.pop(context)),
-        middle: Text(
-          _chapter?.title ?? '',
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomBar(BuildContext context, AppSettings settings) {
-    // 安全区域检查防止抖动
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor.withAlpha(240),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withAlpha(20),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomPadding),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // 上一章按钮
-          Expanded(
-            child: TextButton.icon(
-              onPressed:
-                  (_chapter != null && _chapter!.sortNum > 1) ? _onPrev : null,
-              icon: const Icon(Icons.chevron_left),
-              label: const Text('上一章'),
-            ),
-          ),
-
-          if (settings.showChapterNumber)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                _chapter != null
-                    ? '${_chapter!.sortNum} / ${widget.totalChapters}'
-                    : '--',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-
-          // 下一章按钮
-          Expanded(
-            child: TextButton.icon(
-              onPressed:
-                  (_chapter != null && _chapter!.sortNum < widget.totalChapters)
-                      ? _onNext
-                      : null,
-              icon: const Icon(Icons.chevron_right),
-              label: const Text('下一章'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ==================== 悬浮控件模式（异形屏优化）====================
-
-  /// MD3 风格圆形按钮（使用主题色或封面取色）
-  /// MD3 风格圆形按钮（高斯模糊毛玻璃版）
-  Widget _buildFloatingButton({required IconData icon, VoidCallback? onTap}) {
-    // 优先使用封面取色，否则使用主题色
-    final colorScheme = _dynamicColorScheme ?? Theme.of(context).colorScheme;
-    final isDisabled = onTap == null;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        // 淡淡的阴影提升层次感
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Material(
-            // 半透明背景色：深色模式用深色，浅色模式用浅色，以保证对比度
-            color: (isDark ? Colors.black : Colors.white).withValues(
-              alpha: isDark ? 0.3 : 0.5,
-            ),
-            child: InkWell(
-              onTap: onTap,
-              customBorder: const CircleBorder(),
-              child: Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color:
-                      isDisabled
-                          ? colorScheme.onSurface.withValues(alpha: 0.38)
-                          : colorScheme.onSurface,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// MD3 风格卡片（使用主题色或封面取色）
-  /// MD3 风格卡片（高斯模糊毛玻璃版）
-  Widget _buildFloatingCard({required Widget child}) {
-    // 优先使用封面取色，否则使用主题色
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        // 淡淡的阴影
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            // 半透明背景色
-            color: (isDark ? Colors.black : Colors.white).withValues(
-              alpha: isDark ? 0.3 : 0.5,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: child,
-          ),
-        ),
-      ),
-    );
-  }
+  // ==================== 悬浮控件 ====================
 
   /// 悬浮顶部功能区
   Widget _buildFloatingTopBar(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
-
     final colorScheme = Theme.of(context).colorScheme;
 
     return Positioned(
@@ -1021,60 +755,96 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       child: AnimatedOpacity(
         opacity: _barsVisible ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
-        child: Row(
-          children: [
-            // 圆形返回按钮
-            _buildFloatingButton(
-              icon: Icons.arrow_back_ios_new,
-              onTap: () => Navigator.pop(context),
-            ),
-            const SizedBox(width: 12),
+        child: IgnorePointer(
+          ignoring: !_barsVisible,
+          child: Row(
+            children: [
+              // 返回按钮 - AdaptiveFloatingActionButton
+              AdaptiveFloatingActionButton(
+                mini: true,
+                onPressed: () => Navigator.pop(context),
+                child: Icon(
+                  PlatformInfo.isIOS ? Icons.chevron_left : Icons.arrow_back,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
 
-            // 章节信息（毛玻璃卡片）
-            Expanded(
-              child: _buildFloatingCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // 章节信息卡片 - AdaptiveCard
+              Expanded(
+                child: AdaptiveCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 章节标题
+                      Text(
+                        _chapter?.title ?? '',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      // 阅读进度
+                      Text(
+                        '${_chapter?.sortNum ?? 0}/${widget.totalChapters} · 已读 ${(_lastScrollPercent * 100).toInt()}%',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // 右侧胶囊形双按钮组（章节列表 + 颜色切换）
+              AdaptiveCard(
+                padding: EdgeInsets.zero,
+                borderRadius: BorderRadius.circular(22),
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 章节标题
-                    Text(
-                      _chapter?.title ?? '',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    // 章节列表按钮
+                    AdaptiveButton.icon(
+                      onPressed: () => _showChapterListSheet(context),
+                      icon: Icons.list,
                     ),
-                    const SizedBox(height: 2),
-                    // 书名 + 阅读进度
-                    // 书名 + 阅读进度 -> 改为仅显示进度
-                    Text(
-                      '已读 ${(_lastScrollPercent * 100).toInt()}%',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                    // 分隔线
+                    Container(
+                      width: 1,
+                      height: 24,
+                      color: colorScheme.onSurface.withValues(alpha: 0.2),
+                    ),
+                    // 颜色切换按钮
+                    AdaptiveButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const ReaderBackgroundPage(),
+                          ),
+                        );
+                      },
+                      icon: Icons.palette_outlined,
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(width: 12),
-
-            // 右侧更多按钮
-            _buildFloatingButton(
-              icon: Icons.more_horiz,
-              onTap: () {
-                // TODO: 更多操作
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 悬浮右下角功能区
+  /// 悬浮底部功能区（上下章导航）
   Widget _buildFloatingBottomControls(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
@@ -1088,53 +858,33 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         child: AnimatedOpacity(
           opacity: _barsVisible ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 200),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // 章节切换
-              _buildFloatingButton(
-                icon: Icons.list,
-                onTap: () => _showChapterListSheet(context),
-              ),
-              const SizedBox(height: 8),
-
-              // 阅读背景/主题
-              _buildFloatingButton(
-                icon: Icons.palette_outlined,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => const ReaderBackgroundPage(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-
-              // 上下章节导航（横向）
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildFloatingButton(
-                    icon: Icons.chevron_left,
-                    onTap:
-                        _chapter != null && _chapter!.sortNum > 1
-                            ? _onPrev
-                            : null,
-                  ),
-                  const SizedBox(width: 8),
-                  _buildFloatingButton(
-                    icon: Icons.chevron_right,
-                    onTap:
-                        _chapter != null &&
-                                _chapter!.sortNum < widget.totalChapters
-                            ? _onNext
-                            : null,
-                  ),
-                ],
-              ),
-            ],
+          child: IgnorePointer(
+            ignoring: !_barsVisible,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 上一章
+                AdaptiveFloatingActionButton(
+                  mini: true,
+                  onPressed:
+                      _chapter != null && _chapter!.sortNum > 1
+                          ? _onPrev
+                          : null,
+                  child: const Icon(Icons.chevron_left, size: 20),
+                ),
+                const SizedBox(width: 8),
+                // 下一章
+                AdaptiveFloatingActionButton(
+                  mini: true,
+                  onPressed:
+                      _chapter != null &&
+                              _chapter!.sortNum < widget.totalChapters
+                          ? _onNext
+                          : null,
+                  child: const Icon(Icons.chevron_right, size: 20),
+                ),
+              ],
+            ),
           ),
         ),
       ),
