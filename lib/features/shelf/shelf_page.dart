@@ -1,3 +1,4 @@
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -178,6 +179,7 @@ class ShelfPageState extends State<ShelfPage> {
 
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // 自定义头部
@@ -233,7 +235,12 @@ class ShelfPageState extends State<ShelfPage> {
                     onRefresh: () => _fetchShelf(force: true),
                     child: GridView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.fromLTRB(
+                        12,
+                        12,
+                        12,
+                        PlatformInfo.isIOS26OrHigher() ? 50 : 24,
+                      ),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,

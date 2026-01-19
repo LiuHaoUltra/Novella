@@ -764,16 +764,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               AdaptiveFloatingActionButton(
                 mini: true,
                 onPressed: () => Navigator.pop(context),
-                child:
-                    (PlatformInfo.isIOS26OrHigher()
-                            ? const SFSymbol('chevron.left', size: 20)
-                            : Icon(
-                              PlatformInfo.isIOS
-                                  ? CupertinoIcons.chevron_left
-                                  : Icons.arrow_back,
-                              size: 20,
-                            ))
-                        as Widget,
+                child: Icon(
+                  PlatformInfo.isIOS
+                      ? CupertinoIcons.chevron_left
+                      : Icons.arrow_back,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
 
@@ -820,20 +816,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // 章节列表按钮
-                    PlatformInfo.isIOS26OrHigher()
-                        ? AdaptiveButton.sfSymbol(
-                          onPressed: () => _showChapterListSheet(context),
-                          style: AdaptiveButtonStyle.plain,
-                          sfSymbol: const SFSymbol('list.bullet', size: 20),
-                        )
-                        : AdaptiveButton.icon(
-                          onPressed: () => _showChapterListSheet(context),
-                          style: AdaptiveButtonStyle.plain,
-                          icon:
-                              PlatformInfo.isIOS
-                                  ? CupertinoIcons.list_bullet
-                                  : Icons.list,
-                        ),
+                    AdaptiveButton.icon(
+                      onPressed: () => _showChapterListSheet(context),
+                      style: AdaptiveButtonStyle.plain,
+                      icon:
+                          PlatformInfo.isIOS
+                              ? CupertinoIcons.list_bullet
+                              : Icons.list,
+                    ),
                     // 分隔线
                     Container(
                       width: 1,
@@ -841,34 +831,20 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       color: colorScheme.onSurface.withValues(alpha: 0.2),
                     ),
                     // 颜色切换按钮
-                    PlatformInfo.isIOS26OrHigher()
-                        ? AdaptiveButton.sfSymbol(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (context) => const ReaderBackgroundPage(),
-                              ),
-                            );
-                          },
-                          style: AdaptiveButtonStyle.plain,
-                          sfSymbol: const SFSymbol('paintbrush', size: 20),
-                        )
-                        : AdaptiveButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder:
-                                    (context) => const ReaderBackgroundPage(),
-                              ),
-                            );
-                          },
-                          style: AdaptiveButtonStyle.plain,
-                          icon:
-                              PlatformInfo.isIOS
-                                  ? CupertinoIcons.paintbrush
-                                  : Icons.palette_outlined,
-                        ),
+                    AdaptiveButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const ReaderBackgroundPage(),
+                          ),
+                        );
+                      },
+                      style: AdaptiveButtonStyle.plain,
+                      icon:
+                          PlatformInfo.isIOS
+                              ? CupertinoIcons.paintbrush
+                              : Icons.palette_outlined,
+                    ),
                   ],
                 ),
               ),
@@ -905,16 +881,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       _chapter != null && _chapter!.sortNum > 1
                           ? _onPrev
                           : null,
-                  child:
-                      (PlatformInfo.isIOS26OrHigher()
-                              ? const SFSymbol('chevron.left', size: 20)
-                              : Icon(
-                                PlatformInfo.isIOS
-                                    ? CupertinoIcons.chevron_left
-                                    : Icons.chevron_left,
-                                size: 20,
-                              ))
-                          as Widget,
+                  child: Icon(
+                    PlatformInfo.isIOS
+                        ? CupertinoIcons.chevron_left
+                        : Icons.chevron_left,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 // 下一章
@@ -925,16 +897,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                               _chapter!.sortNum < widget.totalChapters
                           ? _onNext
                           : null,
-                  child:
-                      (PlatformInfo.isIOS26OrHigher()
-                              ? const SFSymbol('chevron.right', size: 20)
-                              : Icon(
-                                PlatformInfo.isIOS
-                                    ? CupertinoIcons.chevron_right
-                                    : Icons.chevron_right,
-                                size: 20,
-                              ))
-                          as Widget,
+                  child: Icon(
+                    PlatformInfo.isIOS
+                        ? CupertinoIcons.chevron_right
+                        : Icons.chevron_right,
+                    size: 20,
+                  ),
                 ),
               ],
             ),

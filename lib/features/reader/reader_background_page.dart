@@ -140,6 +140,7 @@ class _ReaderBackgroundPageState extends ConsumerState<ReaderBackgroundPage> {
         ],
       ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // 预览区域
@@ -222,7 +223,12 @@ class _ReaderBackgroundPageState extends ConsumerState<ReaderBackgroundPage> {
 
   Widget _buildBottomPanel(ColorScheme colors) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        24 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

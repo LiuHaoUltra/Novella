@@ -135,6 +135,7 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
                   ],
                 ),
                 body: SafeArea(
+                  bottom: false,
                   child: Column(
                     children: [
                       // 预览区域（不可点击）
@@ -348,7 +349,12 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
 
   Widget _buildBottomPanel(ColorScheme colors, Color effectiveSeedColor) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        24 + MediaQuery.of(context).padding.bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

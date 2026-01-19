@@ -28,6 +28,8 @@ class _MainPageState extends State<MainPage> {
   @override
   Widget build(BuildContext context) {
     return AdaptiveScaffold(
+      // 强制 TabBar 永远不缩小、不隐藏
+      minimizeBehavior: TabBarMinimizeBehavior.never,
       // 主体内容
       body: IndexedStack(index: _currentIndex, children: _pages),
       // 自适应底部导航栏
@@ -49,64 +51,48 @@ class _MainPageState extends State<MainPage> {
           AdaptiveNavigationDestination(
             icon:
                 PlatformInfo.isIOS26OrHigher()
-                    ? 'compass'
+                    ? 'safari.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.compass
                     : Icons.explore_outlined,
             selectedIcon:
-                PlatformInfo.isIOS26OrHigher()
-                    ? 'compass.fill'
-                    : PlatformInfo.isIOS
-                    ? CupertinoIcons.compass
-                    : Icons.explore,
+                PlatformInfo.isIOS ? CupertinoIcons.compass : Icons.explore,
             label: '发现',
           ),
           // 书架
           AdaptiveNavigationDestination(
             icon:
                 PlatformInfo.isIOS26OrHigher()
-                    ? 'bookmark'
+                    ? 'book.closed.fill'
                     : PlatformInfo.isIOS
-                    ? CupertinoIcons.bookmark
-                    : Icons.bookmark_border,
+                    ? CupertinoIcons.book
+                    : Icons.book_outlined,
             selectedIcon:
-                PlatformInfo.isIOS26OrHigher()
-                    ? 'bookmark.fill'
-                    : PlatformInfo.isIOS
-                    ? CupertinoIcons.bookmark_solid
-                    : Icons.bookmark,
+                PlatformInfo.isIOS ? CupertinoIcons.book_solid : Icons.book,
             label: '书架',
           ),
           // 历史
           AdaptiveNavigationDestination(
             icon:
                 PlatformInfo.isIOS26OrHigher()
-                    ? 'clock'
-                    : PlatformInfo.isIOS
-                    ? CupertinoIcons.time
-                    : Icons.history,
-            selectedIcon:
-                PlatformInfo.isIOS26OrHigher()
                     ? 'clock.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.time
                     : Icons.history,
+            selectedIcon:
+                PlatformInfo.isIOS ? CupertinoIcons.time : Icons.history,
             label: '历史',
           ),
           // 设置
           AdaptiveNavigationDestination(
             icon:
                 PlatformInfo.isIOS26OrHigher()
-                    ? 'gearshape'
+                    ? 'gearshape.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.settings
                     : Icons.settings_outlined,
             selectedIcon:
-                PlatformInfo.isIOS26OrHigher()
-                    ? 'gearshape.fill'
-                    : PlatformInfo.isIOS
-                    ? CupertinoIcons.settings
-                    : Icons.settings,
+                PlatformInfo.isIOS ? CupertinoIcons.settings : Icons.settings,
             label: '设置',
           ),
         ],

@@ -10,6 +10,7 @@ import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -209,8 +210,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       });
     }
 
-    // 仅展示前 9 本（3 行）
-    final previewBooks = _rankBooks.take(9).toList();
+    // 仅展示前 6 本（2 行）
+    final previewBooks = _rankBooks.take(6).toList();
 
     return Scaffold(
       body: RefreshIndicator(
@@ -269,7 +270,12 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                   }
                 }),
             // 底部留白
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            // 底部留白 (减去模块自带的 16px 底部间距)
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: (PlatformInfo.isIOS26OrHigher() ? 50 : 24) - 16,
+              ),
+            ),
           ],
         ),
       ),
@@ -501,6 +507,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
               }, childCount: previewBooks.length),
             ),
           ),
+      const SliverToBoxAdapter(child: SizedBox(height: 16)),
     ];
   }
 

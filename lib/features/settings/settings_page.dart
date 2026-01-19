@@ -1,3 +1,4 @@
+import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -488,8 +489,11 @@ class SettingsPage extends ConsumerWidget {
 
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: EdgeInsets.zero,
+          padding: EdgeInsets.only(
+            bottom: PlatformInfo.isIOS26OrHigher() ? 50 : 24,
+          ),
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
