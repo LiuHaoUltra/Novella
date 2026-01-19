@@ -492,7 +492,7 @@ class SettingsPage extends ConsumerWidget {
         bottom: false,
         child: ListView(
           padding: EdgeInsets.only(
-            bottom: PlatformInfo.isIOS26OrHigher() ? 50 : 24,
+            bottom: PlatformInfo.isIOS26OrHigher() ? 86 : 24,
           ),
           children: [
             Padding(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
@@ -808,46 +809,97 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               ),
               const SizedBox(width: 12),
 
-              // 右侧胶囊形双按钮组（章节列表 + 颜色切换）
-              AdaptiveCard(
-                padding: EdgeInsets.zero,
-                borderRadius: BorderRadius.circular(22),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 章节列表按钮
-                    AdaptiveButton.icon(
-                      onPressed: () => _showChapterListSheet(context),
-                      style: AdaptiveButtonStyle.plain,
+              // 更多菜单按钮（章节列表 + 阅读背景）
+              // 更多菜单按钮（章节列表 + 阅读背景）
+              if (Platform.isIOS || Platform.isMacOS)
+                AdaptivePopupMenuButton.icon<String>(
+                  icon:
+                      PlatformInfo.isIOS26OrHigher()
+                          ? 'ellipsis.circle'
+                          : CupertinoIcons.ellipsis_circle,
+                  buttonStyle: PopupButtonStyle.glass,
+                  items: [
+                    AdaptivePopupMenuItem(
+                      label: '章节列表',
                       icon:
-                          PlatformInfo.isIOS
-                              ? CupertinoIcons.list_bullet
-                              : Icons.list,
+                          PlatformInfo.isIOS26OrHigher()
+                              ? 'list.bullet'
+                              : CupertinoIcons.list_bullet,
+                      value: 'chapters',
                     ),
-                    // 分隔线
-                    Container(
-                      width: 1,
-                      height: 24,
-                      color: colorScheme.onSurface.withValues(alpha: 0.2),
+                    AdaptivePopupMenuItem(
+                      label: '阅读背景',
+                      icon:
+                          PlatformInfo.isIOS26OrHigher()
+                              ? 'paintbrush'
+                              : CupertinoIcons.paintbrush,
+                      value: 'background',
                     ),
-                    // 颜色切换按钮
-                    AdaptiveButton.icon(
-                      onPressed: () {
+                  ],
+                  onSelected: (index, item) {
+                    switch (item.value) {
+                      case 'chapters':
+                        _showChapterListSheet(context);
+                        break;
+                      case 'background':
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (context) => const ReaderBackgroundPage(),
                           ),
                         );
-                      },
-                      style: AdaptiveButtonStyle.plain,
-                      icon:
-                          PlatformInfo.isIOS
-                              ? CupertinoIcons.paintbrush
-                              : Icons.palette_outlined,
-                    ),
-                  ],
+                        break;
+                    }
+                  },
+                )
+              else
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz),
+                  itemBuilder: (context) {
+                    final colorScheme = Theme.of(context).colorScheme;
+                    return [
+                      PopupMenuItem(
+                        value: 'chapters',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.list,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('章节列表'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'background',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.palette_outlined,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 12),
+                            const Text('阅读背景'),
+                          ],
+                        ),
+                      ),
+                    ];
+                  },
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'chapters':
+                        _showChapterListSheet(context);
+                        break;
+                      case 'background':
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const ReaderBackgroundPage(),
+                          ),
+                        );
+                        break;
+                    }
+                  },
                 ),
-              ),
             ],
           ),
         ),

@@ -239,7 +239,7 @@ class ShelfPageState extends State<ShelfPage> {
                         12,
                         12,
                         12,
-                        PlatformInfo.isIOS26OrHigher() ? 50 : 24,
+                        PlatformInfo.isIOS26OrHigher() ? 86 : 24,
                       ),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(

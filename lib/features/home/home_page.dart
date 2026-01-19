@@ -273,7 +273,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
             // 底部留白 (减去模块自带的 16px 底部间距)
             SliverToBoxAdapter(
               child: SizedBox(
-                height: (PlatformInfo.isIOS26OrHigher() ? 50 : 24) - 16,
+                height: (PlatformInfo.isIOS26OrHigher() ? 86 : 24) - 16,
               ),
             ),
           ],
