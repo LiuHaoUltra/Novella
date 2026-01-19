@@ -14,11 +14,15 @@ on:
 jobs:
   build-ipa:
     name: Build iOS IPA
-    runs-on: macos-latest
+    runs-on: macos-15
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # 0. 选择 Xcode 26 (支持 iOS 26 SDK 的 Liquid Glass API)
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
 
       # 1. 配置 Rust 环境
       - name: Install Rust Toolchain
