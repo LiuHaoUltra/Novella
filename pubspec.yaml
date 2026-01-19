@@ -63,7 +63,6 @@ dependencies:
   dynamic_color: ^1.8.1
   flutter_colorpicker: ^1.1.0
   soft_edge_blur: ^0.1.3
-  sensors_plus: ^7.0.0
 
 dev_dependencies:
   flutter_test:
