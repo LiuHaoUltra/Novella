@@ -1,0 +1,65 @@
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Ask a Question
+
+        Ask questions about using Adaptive Platform UI. Before posting:
+        - Check existing discussions and documentation
+        - Provide code examples when relevant
+        - Be specific about your use case
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: How do I...?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide context about what you're trying to achieve
+      placeholder: I'm building an app that needs to...
+    validations:
+      required: false
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Code Sample
+      description: If applicable, provide a code sample
+      placeholder: |
+        ```dart
+        // Your code here
+        ```
+      render: dart
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform(s) are you working with?
+      multiple: true
+      options:
+        - iOS
+        - Android
+        - Both
+        - Web
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Package Version
+      description: Which version of adaptive_platform_ui are you using?
+      placeholder: e.g., 0.1.94
+    validations:
+      required: false

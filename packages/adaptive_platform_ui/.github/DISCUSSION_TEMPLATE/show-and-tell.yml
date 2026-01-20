@@ -1,0 +1,81 @@
+labels: [showcase]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Show and Tell
+
+        Share what you've built with Adaptive Platform UI! We'd love to see your projects, experiments, and implementations.
+
+  - type: input
+    id: project-name
+    attributes:
+      label: Project Name
+      description: What's your project called?
+      placeholder: My Awesome App
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Tell us about your project
+      placeholder: This app does...
+    validations:
+      required: true
+
+  - type: textarea
+    id: widgets-used
+    attributes:
+      label: Adaptive Widgets Used
+      description: Which Adaptive Platform UI widgets did you use?
+      placeholder: |
+        - AdaptiveScaffold
+        - AdaptiveButton
+        - AdaptiveTextField
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots/Demo
+      description: Share screenshots, GIFs, or video links
+      placeholder: |
+        ![Screenshot](url-to-image)
+        [Demo Video](url-to-video)
+    validations:
+      required: false
+
+  - type: textarea
+    id: experience
+    attributes:
+      label: Your Experience
+      description: How was your experience using the package? Any challenges or wins?
+      placeholder: Building with adaptive_platform_ui was...
+    validations:
+      required: false
+
+  - type: input
+    id: links
+    attributes:
+      label: Links
+      description: App Store, Google Play, website, or repository link (if public)
+      placeholder: https://...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platforms
+    attributes:
+      label: Platforms
+      description: Which platforms does your app support?
+      multiple: true
+      options:
+        - iOS
+        - Android
+        - Web
+        - Desktop
+    validations:
+      required: false

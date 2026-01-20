@@ -1,0 +1,67 @@
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Share Your Ideas
+
+        Share ideas for improving Adaptive Platform UI or discuss new features.
+
+        **Note:** For formal feature requests that you want tracked, please use the [Feature Request issue template](https://github.com/berkaycatak/adaptive_platform_ui/issues/new?template=feature_request.md) instead.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your Idea
+      description: Describe your idea for improvement or new feature
+      placeholder: What if we could...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: What problem does this solve? What use case does it enable?
+      placeholder: This would help when...
+    validations:
+      required: false
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: Any thoughts on how this could be implemented?
+      placeholder: This could work by...
+    validations:
+      required: false
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example Usage
+      description: How would you like to use this feature?
+      placeholder: |
+        ```dart
+        AdaptiveWidget(
+          // Example usage
+        )
+        ```
+      render: dart
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platforms
+    attributes:
+      label: Relevant Platforms
+      description: Which platforms would this affect?
+      multiple: true
+      options:
+        - iOS 26+
+        - iOS <26
+        - Android
+        - All platforms
+        - Platform agnostic
+    validations:
+      required: false

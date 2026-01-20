@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/berkaycatak/adaptive_platform_ui/discussions
+    about: Ask questions or discuss ideas in GitHub Discussions
+  - name: Documentation
+    url: https://github.com/berkaycatak/adaptive_platform_ui#readme
+    about: Check the README for documentation and examples

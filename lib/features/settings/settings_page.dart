@@ -243,6 +243,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
           prefs.getBool('setting_readerUseCustomColor') ?? false,
       iosDisplayStyle: prefs.getString('setting_iosDisplayStyle') ?? 'md3',
     );
+
+    // 同步 iOS 显示样式到 PlatformInfo
+    if (Platform.isIOS) {
+      PlatformInfo.styleOverride = state.iosDisplayStyle;
+    }
   }
 
   Future<void> _save() async {
@@ -490,6 +495,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   void setIosDisplayStyle(String value) {
     state = state.copyWith(iosDisplayStyle: value);
     _save();
+    // 同步到 PlatformInfo
+    if (Platform.isIOS) {
+      PlatformInfo.styleOverride = value;
+    }
   }
 }
 
