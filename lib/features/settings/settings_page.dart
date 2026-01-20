@@ -574,7 +574,7 @@ class SettingsPage extends ConsumerWidget {
             SwitchListTile(
               secondary: const Icon(Icons.auto_fix_high),
               title: const Text('简化章节标题'),
-              subtitle: const Text('实验性功能，仅对续读按钮生效'),
+              subtitle: const Text('实验性功能，建议启用'),
               value: settings.cleanChapterTitle,
               onChanged: (value) => notifier.setCleanChapterTitle(value),
             ),

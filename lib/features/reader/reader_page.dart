@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
@@ -22,6 +21,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:novella/core/widgets/universal_glass_panel.dart';
 
 enum _ReaderLayoutMode { standard, immersive, center }
 
@@ -289,9 +289,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final offset = _scrollController.offset;
     final maxScroll = _scrollController.position.maxScrollExtent;
 
-    // 缓存当前位置用于销毁
+    // 缓存当前位置用于销毁，clamp 确保不超过 0-100%
     if (maxScroll > 0) {
-      _lastScrollPercent = offset / maxScroll;
+      _lastScrollPercent = (offset / maxScroll).clamp(0.0, 1.0);
     }
 
     // 边界自动显示菜单栏
@@ -850,17 +850,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               // 返回按钮 - AdaptiveFloatingActionButton
               // 返回按钮
               if (PlatformInfo.isIOS26OrHigher())
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: AdaptiveButton.sfSymbol(
-                    onPressed: () => Navigator.pop(context),
-                    sfSymbol: const SFSymbol('chevron.left', size: 16),
-                    style: AdaptiveButtonStyle.glass,
-                    borderRadius: BorderRadius.circular(1000),
-                    useSmoothRectangleBorder: false,
-                    padding: EdgeInsets.zero,
-                  ),
+                AdaptiveButton.sfSymbol(
+                  onPressed: () => Navigator.pop(context),
+                  sfSymbol: const SFSymbol('chevron.left'),
+                  style: AdaptiveButtonStyle.glass,
+                  size: AdaptiveButtonSize.medium,
+                  borderRadius: BorderRadius.circular(1000),
+                  useSmoothRectangleBorder: false,
                 )
               else
                 Builder(
@@ -887,57 +883,87 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 ),
               const SizedBox(width: 12),
 
-              // 章节信息卡片
-              // AdaptiveBlurView 内置自动回退机制：
-              // - iOS 26+: 原生 UIVisualEffectView
-              // - 其他平台: BackdropFilter + 反光渐变 + 噪点层 + 内发光边框
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    // 根据阅读背景亮度动态计算文字颜色
-                    final settings = ref.watch(settingsProvider);
-                    final readerBgColor = _getReaderBackgroundColor(settings);
-                    // computeLuminance 返回 0.0-1.0，越接近 1 越亮
-                    final isLightBg = readerBgColor.computeLuminance() > 0.5;
-                    final textColor = isLightBg ? Colors.black : Colors.white;
-                    final subTextColor = textColor.withValues(alpha: 0.7);
+              // 章节信息卡片 - 根据标题长度动态收缩
+              // 使用 Flexible + Center：允许收缩，且在剩余空间居中
+              Flexible(
+                child: Center(
+                  child: Builder(
+                    builder: (context) {
+                      // 根据阅读背景亮度动态计算文字颜色
+                      final settings = ref.watch(settingsProvider);
+                      final readerBgColor = _getReaderBackgroundColor(settings);
+                      // computeLuminance 返回 0.0-1.0，越接近 1 越亮
+                      final isLightBg = readerBgColor.computeLuminance() > 0.5;
+                      final textColor = isLightBg ? Colors.black : Colors.white;
+                      final subTextColor = textColor.withValues(alpha: 0.7);
 
-                    return AdaptiveBlurView(
-                      blurStyle: BlurStyle.systemMaterial,
-                      borderRadius: BorderRadius.circular(100),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // 章节标题
-                            Text(
-                              _loading ? '加载中...' : (_chapter?.title ?? ''),
-                              style: Theme.of(
-                                context,
-                              ).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: textColor,
+                      return UniversalGlassPanel(
+                        blurAmount: 15,
+                        borderRadius: BorderRadius.circular(100),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // 章节标题（支持简化）
+                              Text(
+                                _loading
+                                    ? '加载中...'
+                                    : (() {
+                                      String title = _chapter?.title ?? '';
+                                      if (title.isNotEmpty &&
+                                          settings.cleanChapterTitle) {
+                                        // 智能混合正则：
+                                        // 处理 【第一话】 或非英文前缀
+                                        // 处理 『「〈 分隔符
+                                        // 保留纯英文标题
+                                        final regex = RegExp(
+                                          r'^\s*(?:【([^】]*)】.*|(?![a-zA-Z]+\s)([^\s『「〈]+)[\s『「〈].*)$',
+                                        );
+                                        final match = regex.firstMatch(title);
+                                        if (match != null) {
+                                          final extracted =
+                                              (match.group(1) ?? '') +
+                                              (match.group(2) ?? '');
+                                          if (extracted.isNotEmpty) {
+                                            title = extracted;
+                                          }
+                                        }
+                                      }
+                                      return title;
+                                    })(),
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: textColor,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            // 阅读进度
-                            Text(
-                              '$_timeString · 电量 $_batteryLevel% · 已读 ${(_lastScrollPercent * 100).toInt()}%',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: subTextColor, fontSize: 11),
-                            ),
-                          ],
+                              const SizedBox(height: 2),
+                              // 阅读进度（clamp 确保 0-100%）
+                              Text(
+                                '$_timeString · 电量 $_batteryLevel% · 已读 ${(_lastScrollPercent.clamp(0.0, 1.0) * 100).toInt()}%',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(
+                                  color: subTextColor,
+                                  fontSize: 11,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1071,20 +1097,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               children: [
                 // 上一章
                 if (PlatformInfo.isIOS26OrHigher())
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: AdaptiveButton.sfSymbol(
-                      onPressed:
-                          _chapter != null && _chapter!.sortNum > 1
-                              ? _onPrev
-                              : null,
-                      sfSymbol: const SFSymbol('chevron.left', size: 16),
-                      style: AdaptiveButtonStyle.glass,
-                      borderRadius: BorderRadius.circular(1000),
-                      useSmoothRectangleBorder: false,
-                      padding: EdgeInsets.zero,
-                    ),
+                  AdaptiveButton.sfSymbol(
+                    onPressed: _targetSortNum > 1 ? _onPrev : null,
+                    sfSymbol: const SFSymbol('chevron.left'),
+                    style: AdaptiveButtonStyle.glass,
+                    size: AdaptiveButtonSize.medium,
+                    borderRadius: BorderRadius.circular(1000),
+                    useSmoothRectangleBorder: false,
                   )
                 else
                   Builder(
@@ -1115,21 +1134,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 const SizedBox(width: 8),
                 // 下一章
                 if (PlatformInfo.isIOS26OrHigher())
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: AdaptiveButton.sfSymbol(
-                      onPressed:
-                          _chapter != null &&
-                                  _chapter!.sortNum < widget.totalChapters
-                              ? _onNext
-                              : null,
-                      sfSymbol: const SFSymbol('chevron.right', size: 16),
-                      style: AdaptiveButtonStyle.glass,
-                      borderRadius: BorderRadius.circular(1000),
-                      useSmoothRectangleBorder: false,
-                      padding: EdgeInsets.zero,
-                    ),
+                  AdaptiveButton.sfSymbol(
+                    onPressed:
+                        _targetSortNum < widget.totalChapters ? _onNext : null,
+                    sfSymbol: const SFSymbol('chevron.right'),
+                    style: AdaptiveButtonStyle.glass,
+                    size: AdaptiveButtonSize.medium,
+                    borderRadius: BorderRadius.circular(1000),
+                    useSmoothRectangleBorder: false,
                   )
                 else
                   Builder(
