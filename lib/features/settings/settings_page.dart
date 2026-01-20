@@ -48,6 +48,9 @@ class AppSettings {
   final int readerTextColor; // 自定义文字色 ARGB
   final int readerPresetIndex; // 预设方案索引 (0-4)
   final bool readerUseCustomColor; // 是否使用自定颜色 Tab (false = 预设)
+  // iOS 显示样式（仅 iOS 平台有效）
+  // 'md3' = Material Design 3（默认）, 'ios18' = iOS 18, 'ios26' = iOS 26 液态玻璃
+  final String iosDisplayStyle;
 
   static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
   static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
@@ -88,7 +91,14 @@ class AppSettings {
     this.readerTextColor = 0xFF000000, // 默认黑色文字
     this.readerPresetIndex = 0, // 默认第一个预设（白纸）
     this.readerUseCustomColor = false, // 默认使用预设
+    this.iosDisplayStyle = 'md3', // 默认使用 MD3 样式
   });
+
+  /// 是否使用 iOS 26 液态玻璃样式
+  bool get useIOS26Style => iosDisplayStyle == 'ios26' && Platform.isIOS;
+
+  /// 是否使用 iOS 18 样式
+  bool get useIOS18Style => iosDisplayStyle == 'ios18' && Platform.isIOS;
 
   AppSettings copyWith({
     double? fontSize,
@@ -119,6 +129,7 @@ class AppSettings {
     int? readerTextColor,
     int? readerPresetIndex,
     bool? readerUseCustomColor,
+    String? iosDisplayStyle,
   }) {
     return AppSettings(
       fontSize: fontSize ?? this.fontSize,
@@ -153,6 +164,7 @@ class AppSettings {
       readerTextColor: readerTextColor ?? this.readerTextColor,
       readerPresetIndex: readerPresetIndex ?? this.readerPresetIndex,
       readerUseCustomColor: readerUseCustomColor ?? this.readerUseCustomColor,
+      iosDisplayStyle: iosDisplayStyle ?? this.iosDisplayStyle,
     );
   }
 
@@ -229,6 +241,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerPresetIndex: prefs.getInt('setting_readerPresetIndex') ?? 0,
       readerUseCustomColor:
           prefs.getBool('setting_readerUseCustomColor') ?? false,
+      iosDisplayStyle: prefs.getString('setting_iosDisplayStyle') ?? 'md3',
     );
   }
 
@@ -285,6 +298,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       'setting_readerUseCustomColor',
       state.readerUseCustomColor,
     );
+    await prefs.setString('setting_iosDisplayStyle', state.iosDisplayStyle);
   }
 
   void setFontSize(double size) {
@@ -470,6 +484,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
     );
     _save();
   }
+
+  // ==================== iOS 显示样式设置 ====================
+
+  void setIosDisplayStyle(String value) {
+    state = state.copyWith(iosDisplayStyle: value);
+    _save();
+  }
 }
 
 /// 设置提供者（Riverpod 3.x 语法）
@@ -491,9 +512,7 @@ class SettingsPage extends ConsumerWidget {
       body: SafeArea(
         bottom: false,
         child: ListView(
-          padding: EdgeInsets.only(
-            bottom: PlatformInfo.isIOS26OrHigher() ? 86 : 24,
-          ),
+          padding: EdgeInsets.only(bottom: settings.useIOS26Style ? 86 : 24),
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
@@ -742,6 +761,54 @@ class SettingsPage extends ConsumerWidget {
                       ? (value) => notifier.setOledBlack(value)
                       : null,
             ),
+
+            // iOS 显示样式（仅 iOS 平台显示）
+            if (Platform.isIOS)
+              ListTile(
+                leading: const Icon(Icons.phone_iphone),
+                title: const Text('iOS 显示样式'),
+                subtitle: const Text('实验性功能'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      const {
+                            'md3': 'Material',
+                            'ios18': 'iOS 18',
+                            'ios26': 'iOS 26',
+                          }[settings.iosDisplayStyle] ??
+                          'Material',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right, size: 20),
+                  ],
+                ),
+                onTap: () {
+                  final options = {
+                    'md3': 'Material Design 3',
+                    'ios18': 'iOS 18',
+                  };
+                  final icons = {'md3': Icons.android, 'ios18': Icons.apple};
+
+                  if (PlatformInfo.isIOS26OrHigher()) {
+                    options['ios26'] = 'iOS 26 液态玻璃';
+                    icons['ios26'] = Icons.blur_on;
+                  }
+
+                  _showSelectionSheet<String>(
+                    context: context,
+                    title: 'iOS 显示样式',
+                    subtitle: '选择界面控件风格（实验性功能）',
+                    currentValue: settings.iosDisplayStyle,
+                    options: options,
+                    icons: icons,
+                    onSelected: (value) => notifier.setIosDisplayStyle(value),
+                  );
+                },
+              ),
 
             const Divider(),
 

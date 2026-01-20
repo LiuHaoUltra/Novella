@@ -835,6 +835,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   /// 悬浮顶部功能区
   Widget _buildFloatingTopBar(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
+    final settings = ref.watch(settingsProvider);
 
     return Positioned(
       top: topPadding + 8,
@@ -849,7 +850,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             children: [
               // 返回按钮 - AdaptiveFloatingActionButton
               // 返回按钮
-              if (PlatformInfo.isIOS26OrHigher())
+              if (settings.useIOS26Style)
                 SizedBox(
                   width: 38,
                   height: 38,
@@ -976,7 +977,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               if (Platform.isIOS || Platform.isMacOS)
                 AdaptivePopupMenuButton.icon<String>(
                   icon:
-                      PlatformInfo.isIOS26OrHigher()
+                      settings.useIOS26Style
                           ? 'ellipsis'
                           : CupertinoIcons.ellipsis,
                   buttonStyle: PopupButtonStyle.glass,
@@ -984,7 +985,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     AdaptivePopupMenuItem(
                       label: '章节列表',
                       icon:
-                          PlatformInfo.isIOS26OrHigher()
+                          settings.useIOS26Style
                               ? 'list.bullet'
                               : CupertinoIcons.list_bullet,
                       value: 'chapters',
@@ -992,7 +993,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     AdaptivePopupMenuItem(
                       label: '阅读背景',
                       icon:
-                          PlatformInfo.isIOS26OrHigher()
+                          settings.useIOS26Style
                               ? 'paintbrush'
                               : CupertinoIcons.paintbrush,
                       value: 'background',
@@ -1083,6 +1084,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   /// 悬浮底部功能区（上下章导航）
   Widget _buildFloatingBottomControls(BuildContext context) {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final settings = ref.watch(settingsProvider);
 
     return Positioned(
       right: 16,
@@ -1100,7 +1102,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               mainAxisSize: MainAxisSize.min,
               children: [
                 // 上一章
-                if (PlatformInfo.isIOS26OrHigher())
+                if (settings.useIOS26Style)
                   SizedBox(
                     width: 38,
                     height: 38,
@@ -1141,7 +1143,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   ),
                 const SizedBox(width: 8),
                 // 下一章
-                if (PlatformInfo.isIOS26OrHigher())
+                if (settings.useIOS26Style)
                   SizedBox(
                     width: 38,
                     height: 38,

@@ -1,4 +1,3 @@
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,14 +10,14 @@ import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
-class ShelfPage extends StatefulWidget {
+class ShelfPage extends ConsumerStatefulWidget {
   const ShelfPage({super.key});
 
   @override
-  State<ShelfPage> createState() => ShelfPageState();
+  ConsumerState<ShelfPage> createState() => ShelfPageState();
 }
 
-class ShelfPageState extends State<ShelfPage> {
+class ShelfPageState extends ConsumerState<ShelfPage> {
   final _logger = Logger('ShelfPage');
   final _bookService = BookService();
   final _userService = UserService();
@@ -176,6 +175,7 @@ class ShelfPageState extends State<ShelfPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final settings = ref.watch(settingsProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -239,7 +239,7 @@ class ShelfPageState extends State<ShelfPage> {
                         12,
                         12,
                         12,
-                        PlatformInfo.isIOS26OrHigher() ? 86 : 24,
+                        settings.useIOS26Style ? 86 : 24,
                       ),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(

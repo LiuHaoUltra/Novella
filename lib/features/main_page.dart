@@ -6,14 +6,16 @@ import 'package:novella/features/history/history_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/shelf/shelf_page.dart';
 
-class MainPage extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class MainPage extends ConsumerStatefulWidget {
   const MainPage({super.key});
 
   @override
-  State<MainPage> createState() => _MainPageState();
+  ConsumerState<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> {
+class _MainPageState extends ConsumerState<MainPage> {
   int _currentIndex = 0;
   final _shelfKey = GlobalKey<ShelfPageState>();
   final _historyKey = GlobalKey<HistoryPageState>();
@@ -27,6 +29,7 @@ class _MainPageState extends State<MainPage> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
     return AdaptiveScaffold(
       // 强制 TabBar 永远不缩小、不隐藏
       minimizeBehavior: TabBarMinimizeBehavior.never,
@@ -50,7 +53,7 @@ class _MainPageState extends State<MainPage> {
           // 发现
           AdaptiveNavigationDestination(
             icon:
-                PlatformInfo.isIOS26OrHigher()
+                settings.useIOS26Style
                     ? 'safari.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.compass
@@ -62,7 +65,7 @@ class _MainPageState extends State<MainPage> {
           // 书架
           AdaptiveNavigationDestination(
             icon:
-                PlatformInfo.isIOS26OrHigher()
+                settings.useIOS26Style
                     ? 'book.closed.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.book
@@ -74,7 +77,7 @@ class _MainPageState extends State<MainPage> {
           // 历史
           AdaptiveNavigationDestination(
             icon:
-                PlatformInfo.isIOS26OrHigher()
+                settings.useIOS26Style
                     ? 'clock.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.time
@@ -86,7 +89,7 @@ class _MainPageState extends State<MainPage> {
           // 设置
           AdaptiveNavigationDestination(
             icon:
-                PlatformInfo.isIOS26OrHigher()
+                settings.useIOS26Style
                     ? 'gearshape.fill'
                     : PlatformInfo.isIOS
                     ? CupertinoIcons.settings

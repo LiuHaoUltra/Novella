@@ -10,7 +10,6 @@ import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -140,6 +139,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       if (internalLoading) setState(() => _loading = true);
 
       var books = await _bookService.getLatestBooks(
+        size: 30, // 请求更多以补偿 Level6 过滤
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
       );
@@ -272,9 +272,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
             // 底部留白
             // 底部留白 (减去模块自带的 16px 底部间距)
             SliverToBoxAdapter(
-              child: SizedBox(
-                height: (PlatformInfo.isIOS26OrHigher() ? 86 : 24) - 16,
-              ),
+              child: SizedBox(height: (settings.useIOS26Style ? 86 : 24) - 16),
             ),
           ],
         ),

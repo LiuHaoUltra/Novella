@@ -1,4 +1,3 @@
-import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,14 +9,15 @@ import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 
-class HistoryPage extends StatefulWidget {
+class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
 
   @override
-  State<HistoryPage> createState() => HistoryPageState();
+  ConsumerState<HistoryPage> createState() => HistoryPageState();
 }
 
-class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
+class HistoryPageState extends ConsumerState<HistoryPage>
+    with WidgetsBindingObserver {
   final _logger = Logger('HistoryPage');
   final _userService = UserService();
   final _bookService = BookService();
@@ -223,6 +223,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
   }
 
   Widget _buildContent(BuildContext context, ColorScheme colorScheme) {
+    final settings = ref.watch(settingsProvider);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -287,7 +288,7 @@ class HistoryPageState extends State<HistoryPage> with WidgetsBindingObserver {
         12,
         12,
         12,
-        PlatformInfo.isIOS26OrHigher() ? 86 : 24,
+        settings.useIOS26Style ? 86 : 24,
       ),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
