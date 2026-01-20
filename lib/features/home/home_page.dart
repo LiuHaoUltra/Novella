@@ -29,6 +29,14 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
   String? _lastRankType;
 
+  // 设置变更时标记需要刷新
+  bool _needsRefresh = false;
+
+  // 缓存上次的过滤设置用于检测变化
+  bool? _lastIgnoreJapanese;
+  bool? _lastIgnoreAI;
+  bool? _lastIgnoreLevel6;
+
   // Reading stats
   int _weeklyMinutes = 0;
   int _monthlyMinutes = 0;
@@ -41,7 +49,25 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       await _readingTimeService.recoverSession(); // 恢复/清除过期会话
       _fetchData(); // 获取榜单和最新数据
       _loadReadingStats();
+      // 初始化过滤设置缓存
+      final settings = ref.read(settingsProvider);
+      _lastIgnoreJapanese = settings.ignoreJapanese;
+      _lastIgnoreAI = settings.ignoreAI;
+      _lastIgnoreLevel6 = settings.ignoreLevel6;
     });
+  }
+
+  /// 检查过滤设置是否变更
+  void _checkFilterSettingsChanged() {
+    final settings = ref.read(settingsProvider);
+    if (_lastIgnoreJapanese != settings.ignoreJapanese ||
+        _lastIgnoreAI != settings.ignoreAI ||
+        _lastIgnoreLevel6 != settings.ignoreLevel6) {
+      _needsRefresh = true;
+      _lastIgnoreJapanese = settings.ignoreJapanese;
+      _lastIgnoreAI = settings.ignoreAI;
+      _lastIgnoreLevel6 = settings.ignoreLevel6;
+    }
   }
 
   /// 加载阅读时长统计
@@ -115,9 +141,14 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
 
       // 排名也应用过滤规则
       var books = await _bookService.getRank(days);
+      _logger.info('[Ranking] API returned ${books.length} books');
       // Client-side Level6 filter
       if (settings.ignoreLevel6) {
+        final beforeFilter = books.length;
         books = books.where((b) => b.level != 6).toList();
+        _logger.info(
+          '[Ranking] Level6 filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
+        );
       }
 
       if (mounted) {
@@ -138,14 +169,23 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     try {
       if (internalLoading) setState(() => _loading = true);
 
-      var books = await _bookService.getLatestBooks(
-        size: 30, // 请求更多以补偿 Level6 过滤
+      // 使用 getBookList 替代 getLatestBooks，因为后者服务端固定只返回6本
+      final result = await _bookService.getBookList(
+        page: 1,
+        size: 9, // 请求足够多以补偿 Level6 过滤
+        order: 'latest',
         ignoreJapanese: settings.ignoreJapanese,
         ignoreAI: settings.ignoreAI,
       );
+      var books = result.books;
+      _logger.info('[Recently Updated] API returned ${books.length} books');
       // Client-side Level6 filter
       if (settings.ignoreLevel6) {
+        final beforeFilter = books.length;
         books = books.where((b) => b.level != 6).toList();
+        _logger.info(
+          '[Recently Updated] Level6 filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
+        );
       }
 
       if (mounted) {
@@ -174,9 +214,14 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       final settings = ref.read(settingsProvider);
       final days = _rankTypeToDay(rankType);
       var books = await _bookService.getRank(days);
+      _logger.info('[Ranking] API returned ${books.length} books');
       // Client-side Level6 filter
       if (settings.ignoreLevel6) {
+        final beforeFilter = books.length;
         books = books.where((b) => b.level != 6).toList();
+        _logger.info(
+          '[Ranking] Level6 filter: $beforeFilter -> ${books.length} (filtered ${beforeFilter - books.length})',
+        );
       }
       setState(() {
         _rankBooks = books;
@@ -200,6 +245,17 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final settings = ref.watch(settingsProvider);
+
+    // 检测过滤设置变更并标记需要刷新
+    _checkFilterSettingsChanged();
+
+    // 如果标记为需要刷新，触发重新加载
+    if (_needsRefresh) {
+      _needsRefresh = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchData();
+      });
+    }
 
     // 检测榜单类型变更并刷新，立即更新防止死循环
     if (_lastRankType != null && _lastRankType != settings.homeRankType) {
@@ -396,9 +452,9 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
               ),
               delegate: SliverChildBuilderDelegate((context, index) {
                 final book = _latestBooks[index];
-                if (index >= 9) return null;
+                if (index >= 6) return null;
                 return _buildBookCard(context, book, 0, 'recent');
-              }, childCount: _latestBooks.length > 9 ? 9 : _latestBooks.length),
+              }, childCount: _latestBooks.length > 6 ? 6 : _latestBooks.length),
             ),
           ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),

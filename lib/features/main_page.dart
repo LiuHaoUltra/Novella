@@ -48,6 +48,7 @@ class _MainPageState extends ConsumerState<MainPage> {
           } else if (index == 2) {
             _historyKey.currentState?.refresh();
           }
+          // 首页通过 ref.watch(settingsProvider) 自动检测设置变更并刷新
         },
         items: [
           // 发现
