@@ -8,24 +8,27 @@
 
 **简洁的轻小说阅读器**
 
-基于 Flutter + Rust FFI 构建，提供纯净的界面和阅读体验。
-如果喜欢这款软件，还请点亮仓库的小星星~
+<p align="center">
+  基于 Flutter + Rust FFI 构建，提供纯净的界面和阅读体验。<br/>
+  如果喜欢这款软件，还请点亮仓库的小星星~
+</p>
 
 <br/>
 
-<div style="display: flex; overflow-x: auto; gap: 10px; padding: 10px;">
-    <img src="assets/screenshots_0.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_1.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_2.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_3.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_4.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_5.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_6.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_7.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-    <img src="assets/screenshots_8.PNG" style="width: 24%; border-radius: 10px; flex-shrink: 0;" />
-</div>
-
-<p align="center" style="color: #999; font-size: 14px;">滑动查看更多预览</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="assets/screenshots_1.PNG" width="100%" /></td>
+    <td align="center"><img src="assets/screenshots_2.PNG" width="100%" /></td>
+    <td align="center"><img src="assets/screenshots_3.PNG" width="100%" /></td>
+    <td align="center"><img src="assets/screenshots_4.PNG" width="100%" /></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/screenshots_5.PNG" width="100%" /></td>
+    <td align="center"><img src="assets/screenshots_6.PNG" width="100%" /></td>
+    <td align="center"><img src="assets/screenshots_7.PNG" width="100%" /></td>
+    <td align="center"><img src="assets/screenshots_8.PNG" width="100%" /></td>
+  </tr>
+</table>
 
 </div>
 
