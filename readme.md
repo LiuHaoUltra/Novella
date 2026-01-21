@@ -1,4 +1,4 @@
-# Novella
+<h1 align="center">Novella</h1>
 
 <div align="center">
 
@@ -6,7 +6,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![License](https://img.shields.io/badge/License-AGPL%203.0-blue)
 
-**简洁的轻小说阅读器**
+**轻书架第三方客户端**
 
 <p align="center">
   基于 Flutter + Rust FFI 构建，提供纯净的界面和阅读体验。<br/>
@@ -15,20 +15,16 @@
 
 <br/>
 
-<table align="center">
-  <tr>
-    <td align="center"><img src="assets/screenshots_1.PNG" width="100%" /></td>
-    <td align="center"><img src="assets/screenshots_2.PNG" width="100%" /></td>
-    <td align="center"><img src="assets/screenshots_3.PNG" width="100%" /></td>
-    <td align="center"><img src="assets/screenshots_4.PNG" width="100%" /></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="assets/screenshots_5.PNG" width="100%" /></td>
-    <td align="center"><img src="assets/screenshots_6.PNG" width="100%" /></td>
-    <td align="center"><img src="assets/screenshots_7.PNG" width="100%" /></td>
-    <td align="center"><img src="assets/screenshots_8.PNG" width="100%" /></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="assets/screenshots_1.PNG" width="24%" />
+  <img src="assets/screenshots_2.PNG" width="24%" />
+  <img src="assets/screenshots_3.PNG" width="24%" />
+  <img src="assets/screenshots_4.PNG" width="24%" />
+  <br/> <img src="assets/screenshots_5.PNG" width="24%" />
+  <img src="assets/screenshots_6.PNG" width="24%" />
+  <img src="assets/screenshots_7.PNG" width="24%" />
+  <img src="assets/screenshots_8.PNG" width="24%" />
+</p>
 
 </div>
 
@@ -41,10 +37,10 @@
 
 ## 🛠️ 技术栈
 
-- **UI 框架**: Flutter (Riverpod)
-- **底层核心**: Rust (通过 `flutter_rust_bridge` 调用)
-- **通信协议**: SignalR + MessagePack (二进制通讯)
-- **字体引擎**: 基于 Rust 的 WOFF2 动态转码与解混淆
+- **UI 框架**：Flutter (Riverpod)
+- **底层核心**：Rust (通过 `flutter_rust_bridge` 调用)
+- **通信协议**：SignalR + MessagePack (二进制通讯)
+- **字体引擎**：基于 Rust 的 WOFF2 动态转码与解混淆
 
 ## 📬 反馈与交流
 
