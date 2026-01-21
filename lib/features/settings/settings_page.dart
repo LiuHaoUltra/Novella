@@ -802,8 +802,8 @@ class SettingsPage extends ConsumerWidget {
                   };
                   final icons = {'md3': Icons.android, 'ios18': Icons.apple};
 
-                  if (PlatformInfo.isIOS26OrHigher()) {
-                    options['ios26'] = 'iOS 26 液态玻璃';
+                  if (PlatformInfo.isNativeIOS26OrHigher()) {
+                    options['ios26'] = 'iOS 26';
                     icons['ios26'] = Icons.blur_on;
                   }
 

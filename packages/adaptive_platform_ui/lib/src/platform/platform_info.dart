@@ -1,54 +1,59 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 
-/// Provides platform detection and iOS version information
+/// 提供平台检测和 iOS 版本信息
 ///
-/// This class helps determine the current platform and iOS version
-/// to enable adaptive widget rendering based on platform capabilities.
+/// 此类帮助确定当前平台和 iOS 版本，以根据平台功能启用自适应组件渲染。
 class PlatformInfo {
-  /// Style override for testing or user preference
+  /// 用于测试或用户偏好的样式覆盖
   ///
-  /// Set to 'ios26' to force iOS 26 style, 'ios18' for iOS 18 style,
-  /// 'md3' for Material Design 3, or null to use platform detection.
+  /// 设置为 'ios26' 强制使用 iOS 26 样式，'ios18' 为 iOS 18 样式，
+  /// 'md3' 为 Material Design 3，或设为 null 以使用默认平台检测。
   static String? styleOverride;
 
-  /// Returns true if the current platform is iOS
-  static bool get isIOS => !kIsWeb && Platform.isIOS;
+  /// 如果当前平台是 iOS，则返回 true
+  static bool get isIOS {
+    if (styleOverride == 'md3') return false;
+    return !kIsWeb && Platform.isIOS;
+  }
 
-  /// Returns true if the current platform is Android
-  static bool get isAndroid => !kIsWeb && Platform.isAndroid;
+  /// 如果当前平台是 Android，则返回 true
+  static bool get isAndroid {
+    if (styleOverride == 'md3') return true;
+    return !kIsWeb && Platform.isAndroid;
+  }
 
-  /// Returns true if the current platform is macOS
+  /// 如果当前平台是 macOS，则返回 true
   static bool get isMacOS => !kIsWeb && Platform.isMacOS;
 
-  /// Returns true if the current platform is Windows
+  /// 如果当前平台是 Windows，则返回 true
   static bool get isWindows => !kIsWeb && Platform.isWindows;
 
-  /// Returns true if the current platform is Linux
+  /// 如果当前平台是 Linux，则返回 true
   static bool get isLinux => !kIsWeb && Platform.isLinux;
 
-  /// Returns true if the current platform is Fuchsia
+  /// 如果当前平台是 Fuchsia，则返回 true
   static bool get isFuchsia => !kIsWeb && Platform.isFuchsia;
 
-  /// Returns true if running on web
+  /// 如果在 Web 上运行，则返回 true
   static bool get isWeb => kIsWeb;
 
-  /// Returns the iOS major version number
+  /// 返回 iOS 主版本号
   ///
-  /// Returns 0 if not running on iOS or if version cannot be determined.
-  /// Example: For iOS 26.1.2, returns 26
+  /// 如果未在 iOS 上运行或无法确定版本，则返回 0。
+  /// 示例：对于 iOS 26.1.2，返回 26
   static int get iOSVersion {
-    if (!isIOS) return 0;
+    if (!(!kIsWeb && Platform.isIOS)) return 0;
 
     try {
       final version = Platform.operatingSystemVersion;
-      // Extract major version from string like "Version 26.1.2 (Build 20A123)"
+      // 从字符串如 "Version 26.1.2 (Build 20A123)" 中提取主版本号
       final match = RegExp(r'Version (\d+)').firstMatch(version);
       if (match != null) {
         return int.parse(match.group(1)!);
       }
 
-      // Fallback: try to parse the first number in the version string
+      // 回退：尝试解析版本字符串中的第一个数字
       final fallbackMatch = RegExp(r'(\d+)').firstMatch(version);
       if (fallbackMatch != null) {
         return int.parse(fallbackMatch.group(1)!);
@@ -60,33 +65,38 @@ class PlatformInfo {
     return 0;
   }
 
-  /// Returns true if iOS version is 26 or higher
+  /// 如果 iOS 版本为 26 或更高，则返回 true
   ///
-  /// This is used to determine if iOS 26+ specific widgets should be used.
-  /// If [styleOverride] is set, it takes precedence over platform detection.
+  /// 用于确定是否应使用 iOS 26+ 特定组件。
+  /// 如果设置了 [styleOverride]，则其优先级高于平台检测。
   static bool isIOS26OrHigher() {
-    // Check for style override first
+    // 首先检查样式覆盖
     if (styleOverride != null && isIOS) {
       return styleOverride == 'ios26';
     }
     return isIOS && iOSVersion >= 26;
   }
 
-  /// Returns true if iOS version is 18 or lower (pre-iOS 26)
+  /// 如果物理设备确实是 iOS 26+，则返回 true (忽略样式覆盖)
+  static bool isNativeIOS26OrHigher() {
+    return !kIsWeb && Platform.isIOS && iOSVersion >= 26;
+  }
+
+  /// 如果 iOS 版本为 18 或更低（pre-iOS 26），则返回 true
   ///
-  /// This is used to determine if legacy Cupertino widgets should be used.
-  /// If [styleOverride] is set, it takes precedence over platform detection.
+  /// 用于确定是否应使用旧版 Cupertino 组件。
+  /// 如果设置了 [styleOverride]，则其优先级高于平台检测。
   static bool isIOS18OrLower() {
-    // Check for style override first
+    // 首先检查样式覆盖
     if (styleOverride != null && isIOS) {
       return styleOverride == 'ios18';
     }
     return isIOS && iOSVersion > 0 && iOSVersion < 26;
   }
 
-  /// Returns true if Material Design 3 style should be used
+  /// 如果应使用 Material Design 3 样式，则返回 true
   ///
-  /// This is true for Android, or if [styleOverride] is 'md3' on iOS.
+  /// 对于 Android，或者如果在 iOS 上 [styleOverride] 为 'md3'，则为 true。
   static bool useMD3Style() {
     if (styleOverride != null && isIOS) {
       return styleOverride == 'md3';
@@ -94,15 +104,15 @@ class PlatformInfo {
     return isAndroid;
   }
 
-  /// Returns true if iOS version is in a specific range
+  /// 如果 iOS 版本在特定范围内，则返回 true
   ///
-  /// [min] - Minimum iOS version (inclusive)
-  /// [max] - Maximum iOS version (inclusive)
+  /// [min] - 最小 iOS 版本（包含）
+  /// [max] - 最大 iOS 版本（包含）
   static bool isIOSVersionInRange(int min, int max) {
     return isIOS && iOSVersion >= min && iOSVersion <= max;
   }
 
-  /// Returns a human-readable platform description
+  /// 返回人类可读的平台描述
   static String get platformDescription {
     if (isIOS) return 'iOS $iOSVersion';
     if (isAndroid) return 'Android';
