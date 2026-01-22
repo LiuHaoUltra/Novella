@@ -58,7 +58,7 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
                 opacity: _animation,
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(color: Colors.black.withOpacity(0.7)),
+                  child: Container(color: Colors.black.withValues(alpha: 0.7)),
                 ),
               ),
             ),
@@ -77,7 +77,7 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
                       borderRadius: BorderRadius.circular(widget.borderRadius),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
