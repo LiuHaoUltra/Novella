@@ -855,7 +855,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   height: 44,
                   child: AdaptiveButton.sfSymbol(
                     onPressed: () => Navigator.pop(context),
-                    sfSymbol: const SFSymbol('chevron.left', size: 24),
+                    sfSymbol: const SFSymbol('chevron.left', size: 20),
                     style: AdaptiveButtonStyle.glass,
                     borderRadius: BorderRadius.circular(1000),
                     useSmoothRectangleBorder: false,
@@ -1107,7 +1107,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     height: 44,
                     child: AdaptiveButton.sfSymbol(
                       onPressed: _targetSortNum > 1 ? _onPrev : null,
-                      sfSymbol: const SFSymbol('chevron.left', size: 24),
+                      sfSymbol: const SFSymbol('chevron.left', size: 20),
                       style: AdaptiveButtonStyle.glass,
                       borderRadius: BorderRadius.circular(1000),
                       useSmoothRectangleBorder: false,
@@ -1151,7 +1151,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                           _targetSortNum < widget.totalChapters
                               ? _onNext
                               : null,
-                      sfSymbol: const SFSymbol('chevron.right', size: 24),
+                      sfSymbol: const SFSymbol('chevron.right', size: 20),
                       style: AdaptiveButtonStyle.glass,
                       borderRadius: BorderRadius.circular(1000),
                       useSmoothRectangleBorder: false,
