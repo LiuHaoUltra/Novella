@@ -11,6 +11,8 @@ import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/data/models/comment.dart';
+import 'package:novella/features/comment/comment_page.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 /// 骨架屏加载效果组件
@@ -1582,6 +1584,24 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
               ],
             ),
           ),
+          actions: [
+            IconButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder:
+                        (context) => CommentPage(
+                          type: CommentType.booked,
+                          id: widget.bookId,
+                          title: book.title,
+                        ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.comment_outlined),
+              tooltip: '评论',
+            ),
+          ],
         ),
 
         // 内容区域
