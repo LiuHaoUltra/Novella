@@ -83,8 +83,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   // 顶部信息栏状态
   final Battery _battery = Battery();
   int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.unknown;
   String _timeString = '';
   Timer? _infoTimer;
+  StreamSubscription<BatteryState>? _batteryStateSubscription;
 
   // 章节加载版本号（用于打断旧请求）
   int _loadVersion = 0;
@@ -155,10 +157,21 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   void _initInfoBar() {
     _updateTime();
     _updateBattery();
-    // 每分钟更新一次时间 (和电量)
+
+    // 监听电量状态变化
+    _batteryStateSubscription = _battery.onBatteryStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _batteryState = state;
+        });
+        _updateBattery();
+      }
+    });
+
+    // 每30秒同步更新时间与电量
     _infoTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _updateTime();
-      if (timer.tick % 2 == 0) _updateBattery(); // 每分钟检查一次电量
+      _updateBattery();
     });
   }
 
@@ -245,6 +258,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   void dispose() {
     _barsAnimController.dispose();
     _savePositionTimer?.cancel();
+    _batteryStateSubscription?.cancel();
     // 结束阅读时长记录
     _readingTimeService.endSession();
     // 销毁前同步保存位置
@@ -905,6 +919,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                         blurAmount: 15,
                         borderRadius: BorderRadius.circular(100),
                         child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 140,
+                          ), // 最小宽度
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 10,
@@ -952,15 +969,96 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                               ),
                               const SizedBox(height: 2),
                               // 阅读进度（clamp 确保 0-100%）
-                              Text(
-                                '$_timeString · 电量 $_batteryLevel% · 已读 ${(_lastScrollPercent.clamp(0.0, 1.0) * 100).toInt()}%',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(
-                                  color: subTextColor,
-                                  fontSize: 11,
-                                ),
-                                textAlign: TextAlign.center,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 70, // 加宽以容纳长文本
+                                    child: Text(
+                                      _timeString,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.copyWith(
+                                        color: subTextColor,
+                                        fontSize: 11,
+                                        // height: 1,
+                                      ),
+                                      textAlign: TextAlign.right, // 靠右对齐，紧贴电量条
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+
+                                  // IOS: 自定义电池条
+                                  if (Platform.isIOS) ...[
+                                    Container(
+                                      width: 36,
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: subTextColor.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        borderRadius: BorderRadius.circular(3),
+                                      ),
+                                      alignment: Alignment.centerLeft,
+                                      child: FractionallySizedBox(
+                                        widthFactor: _batteryLevel / 100.0,
+                                        heightFactor: 1.0,
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: () {
+                                              if (_batteryState ==
+                                                  BatteryState.charging) {
+                                                // K: 充电则显示蓝色条
+                                                return Colors.blue;
+                                              }
+                                              // 正常状态
+                                              if (_batteryLevel <= 15) {
+                                                return Colors.red; // 15% 以下红
+                                              } else if (_batteryLevel <= 35) {
+                                                return Colors.yellow; // 35% 以下黄
+                                              } else {
+                                                // 默认绿
+                                                return const Color(0xFF34C759);
+                                              }
+                                            }(),
+                                            borderRadius: BorderRadius.circular(
+                                              3,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ] else
+                                    // 其他平台：百分比文字
+                                    Text(
+                                      '电量 $_batteryLevel%',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.copyWith(
+                                        color: subTextColor,
+                                        fontSize: 11,
+                                        height: 1,
+                                      ),
+                                    ),
+
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 70, // 保持对称
+                                    child: Text(
+                                      '已读 ${(_lastScrollPercent.clamp(0.0, 1.0) * 100).toInt()}%',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall?.copyWith(
+                                        color: subTextColor,
+                                        fontSize: 11,
+                                        // height: 1,
+                                      ),
+                                      textAlign: TextAlign.left, // 靠左对齐，紧贴电量条
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
