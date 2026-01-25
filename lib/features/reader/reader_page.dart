@@ -495,7 +495,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       if (mounted && currentVersion == _loadVersion) {
         setState(() {
           _chapter = chapter;
-          _fontFamily = family;
+          // 确保目标章节号与实际加载章节一致（使用请求的 sortNum，而非返回的）
+          _targetSortNum = sortNum;
+          _fontFamily = family; // 字体加载逻辑
           _loading = false;
           _lastScrollPercent = 0.0;
         });
@@ -507,7 +509,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
           await _restoreScrollPosition();
 
-          // Bug修复：无论是否恢复进度，都保存当前章节到服务端
+          // 无论是否恢复进度，都保存当前章节到服务端
           // 确保点击章节进入后即使不滑动也能同步
           if (mounted && _chapter != null && currentVersion == _loadVersion) {
             if (_scrollController.hasClients &&
@@ -553,7 +555,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   void _onPrev() {
     if (_targetSortNum > 1) {
-      _targetSortNum--;
+      setState(() {
+        _targetSortNum--;
+      });
       _loadChapter(widget.bid, _targetSortNum);
     } else {
       ScaffoldMessenger.of(
@@ -564,7 +568,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   void _onNext() {
     if (_targetSortNum < widget.totalChapters) {
-      _targetSortNum++;
+      setState(() {
+        _targetSortNum++;
+      });
       _loadChapter(widget.bid, _targetSortNum);
     } else {
       ScaffoldMessenger.of(
@@ -733,11 +739,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       ),
       // 自定义样式：实现文字带边距，图片满宽
       customStylesBuilder: (element) {
-        // ... (lines 646-656) - This part is same logic but need to be careful with replace range
-        // I will copy the original customStylesBuilder content or leave it if range allows.
-        // The replace range includes _buildWebContent start, so I must provide full implementation or carefully slice.
-        // It's safer to provide full implementation of _buildWebContent up to where layout is used.
-
         // 图片：强制满宽，无边距，消除底部空隙
         if (element.localName == 'img') {
           return {
@@ -933,12 +934,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                               // 章节标题（支持简化）
                               Text(
                                 _loading
-                                    ? '加载中...'
+                                    ? '加载中'
                                     : (() {
                                       String title = _chapter?.title ?? '';
                                       if (title.isNotEmpty &&
                                           settings.cleanChapterTitle) {
-                                        // 智能混合正则：
+                                        // 混合正则：
                                         // 处理 【第一话】 或非英文前缀
                                         // 处理 『「〈 分隔符
                                         // 保留纯英文标题
@@ -1223,10 +1224,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                           Theme.of(context).colorScheme;
                       return AdaptiveFloatingActionButton(
                         mini: true,
-                        onPressed:
-                            _chapter != null && _chapter!.sortNum > 1
-                                ? _onPrev
-                                : null,
+                        onPressed: _targetSortNum > 1 ? _onPrev : null,
                         backgroundColor: colorScheme.primaryContainer,
                         foregroundColor: colorScheme.onPrimaryContainer,
                         child: Icon(
@@ -1268,8 +1266,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       return AdaptiveFloatingActionButton(
                         mini: true,
                         onPressed:
-                            _chapter != null &&
-                                    _chapter!.sortNum < widget.totalChapters
+                            _targetSortNum < widget.totalChapters
                                 ? _onNext
                                 : null,
                         backgroundColor: colorScheme.primaryContainer,
@@ -1436,7 +1433,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                         onTap: () {
                           Navigator.pop(context);
                           if (sortNum != _chapter?.sortNum) {
-                            _targetSortNum = sortNum; // 同步目标章节号
+                            setState(() {
+                              _targetSortNum = sortNum;
+                            });
                             _loadChapter(widget.bid, sortNum);
                           }
                         },
@@ -1462,7 +1461,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           Text(_error ?? '未知错误', textAlign: TextAlign.center),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: () => _loadChapter(widget.bid, widget.sortNum),
+            onPressed: () => _loadChapter(widget.bid, _targetSortNum),
             icon: const Icon(Icons.refresh),
             label: const Text('重试'),
           ),

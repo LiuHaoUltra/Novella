@@ -26,14 +26,14 @@ jobs:
       - name: Select Xcode 26
         run: sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
 
-      # 1. 配置 Flutter
+      # 配置 Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'master'
           cache: true
 
-      # 4. 获取依赖
+      # 获取依赖
       - name: Flutter Pub Get
         run: flutter pub get
 
