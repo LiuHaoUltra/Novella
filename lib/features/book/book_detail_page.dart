@@ -9,6 +9,7 @@ import 'package:novella/data/services/book_mark_service.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
 import 'package:novella/data/services/user_service.dart';
+import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/data/models/comment.dart';
@@ -223,6 +224,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   final _userService = UserService();
   final _bookMarkService = BookMarkService();
   final _cacheService = BookInfoCacheService();
+  final _localCoverService = LocalCoverService(); // 封面物理持久化服务
 
   // 本地标记状态
   BookMarkStatus _currentMark = BookMarkStatus.none;
@@ -542,6 +544,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
     try {
       final info = await _bookService.getBookInfo(widget.bookId);
+      // 触发封面保存
+      _localCoverService.saveCover(info.id, info.cover);
 
       // 尝试从双源获取进度
       ReadPosition? position;
@@ -802,6 +806,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                   sortNum: sortNum,
                   totalChapters: _bookInfo!.chapters.length,
                   coverUrl: coverUrl,
+                  bookTitle: _bookInfo?.title ?? widget.initialTitle,
                 ),
           ),
         )

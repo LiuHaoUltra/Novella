@@ -15,6 +15,9 @@ import 'package:window_manager/window_manager.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+// 全局导航观察者，用于页面返回时触发刷新
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
+
 // === 加载 Native 库 ===
 // iOS/macOS: 静态链接 (process)
 // Windows/Android: 动态库 (open)
@@ -251,6 +254,7 @@ class _MyAppState extends ConsumerState<MyApp> {
             ),
           ),
           themeMode: _getThemeMode(settings.theme),
+          navigatorObservers: [routeObserver],
           home:
               _loading
                   ? const Scaffold(

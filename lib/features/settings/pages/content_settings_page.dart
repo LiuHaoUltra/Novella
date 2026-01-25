@@ -268,22 +268,29 @@ class ContentSettingsPage extends ConsumerWidget {
   String _getHomeModuleSummary(AppSettings settings) {
     final enabledCount = settings.enabledHomeModules.length;
     if (enabledCount == 0) return '不要全部关闭啦';
-    if (enabledCount == 3) return '全部';
+    if (enabledCount == 4) return '全部';
     return '$enabledCount 个模块';
   }
 
   void _showModuleOrderSheet(BuildContext context) {
     const moduleLabels = {
+      'continueReading': '继续阅读',
       'stats': '阅读统计',
       'recentlyUpdated': '最近更新',
       'ranking': '近期排行',
     };
     const moduleIcons = {
+      'continueReading': Icons.play_circle_outline,
       'stats': Icons.timer_outlined,
       'recentlyUpdated': Icons.update,
       'ranking': Icons.leaderboard_outlined,
     };
-    const allModules = ['stats', 'ranking', 'recentlyUpdated'];
+    const allModules = [
+      'continueReading',
+      'stats',
+      'ranking',
+      'recentlyUpdated',
+    ];
 
     showModalBottomSheet(
       context: context,

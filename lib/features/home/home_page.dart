@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,13 +6,17 @@ import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
+import 'package:novella/data/services/reading_progress_service.dart';
+import 'package:novella/data/services/book_info_cache_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/home/recently_updated_page.dart';
 import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
+import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
+import 'package:novella/main.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -38,9 +43,36 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
   bool? _lastIgnoreAI;
   bool? _lastIgnoreLevel6;
 
-  // Reading stats
+  // 阅读时长统计
   int _weeklyMinutes = 0;
   int _monthlyMinutes = 0;
+
+  // 最后阅读的书籍信息
+  Book? _lastReadBookInfo;
+  ReadPosition? _lastReadPosition;
+  final _progressService = ReadingProgressService();
+  final _cacheService = BookInfoCacheService();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 注册路由观察者
+    routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
+  }
+
+  @override
+  void dispose() {
+    // 取消注册路由观察者
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    // 当从其他页面返回此页面时触发
+    _loadReadingStats();
+    _fetchContinueReading(internalLoading: false);
+  }
 
   @override
   void initState() {
@@ -121,6 +153,9 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
     if (settings.isModuleEnabled('recentlyUpdated')) {
       futures.add(_fetchLatestBooks(internalLoading: false));
     }
+    if (settings.isModuleEnabled('continueReading')) {
+      futures.add(_fetchContinueReading(internalLoading: false));
+    }
 
     await Future.wait(futures);
 
@@ -129,6 +164,133 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _fetchContinueReading({bool internalLoading = true}) async {
+    try {
+      if (internalLoading) setState(() => _loading = true);
+
+      final lastPos = await _progressService.getLastReadBook();
+      if (lastPos != null) {
+        // 1. 优先尝试使用 ReadPosition 自带的本地持久化元数据实现瞬产渲染
+        if (lastPos.title != null && lastPos.cover != null) {
+          final book = Book(
+            id: lastPos.bookId,
+            title: lastPos.title!,
+            cover: lastPos.cover!,
+            author: '', // 首页卡片暂不强制依赖作者信息
+            lastUpdatedAt: DateTime.now(),
+            category: null,
+            level: 0,
+          );
+          if (mounted) {
+            setState(() {
+              _lastReadPosition = lastPos;
+              _lastReadBookInfo = book;
+            });
+          }
+          // 如果已有本地元数据，则后续的网络请求设为完全静默（且可选，仅用于同步最新状态）
+          internalLoading = false;
+        }
+
+        // 2. 尝试从内存缓存快速加载 (用于覆盖老旧无元数据的记录)
+        final cachedInfo = _cacheService.get(lastPos.bookId);
+        if (cachedInfo != null && mounted && _lastReadBookInfo == null) {
+          _updateContinueReadingState(lastPos, cachedInfo);
+        }
+
+        // 3. 网络更新详情
+        final networkUpdate = _bookService
+            .getBookInfo(lastPos.bookId)
+            .then((info) {
+              _cacheService.set(lastPos.bookId, info);
+              if (mounted) {
+                _updateContinueReadingState(lastPos, info);
+              }
+            })
+            .catchError((e) {
+              _logger.warning('Failed to update book info from network: $e');
+              // 如果本地、缓存都没有，且网络失败，才打印警告
+              if (_lastReadBookInfo == null && cachedInfo == null) {
+                _logger.severe(
+                  'Critical: No local/cache/network data for book ${lastPos.bookId}',
+                );
+              }
+            });
+
+        // 核心优化：如果已经有可显示的数据（本地元数据或内存缓存），则不 await 网络请求
+        // 这样可以实现首页瞬间完成初始化流程。
+        if (_lastReadBookInfo == null && cachedInfo == null) {
+          await networkUpdate;
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _lastReadPosition = null;
+            _lastReadBookInfo = null;
+          });
+        }
+      }
+
+      if (internalLoading && mounted) setState(() => _loading = false);
+    } catch (e) {
+      _logger.warning('Failed to fetch continue reading: $e');
+      if (internalLoading && mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _updateContinueReadingState(ReadPosition pos, BookInfo info) {
+    // 补全逻辑：如果本地记录缺失章节标题，尝试从最新的网络详情中补全
+    ReadPosition effectivePos = pos;
+    if (pos.chapterTitle == null || pos.chapterTitle!.isEmpty) {
+      final matchingChapter =
+          info.chapters.where((c) => c.id == pos.chapterId).firstOrNull;
+      if (matchingChapter != null) {
+        effectivePos = ReadPosition(
+          bookId: pos.bookId,
+          chapterId: pos.chapterId,
+          sortNum: pos.sortNum,
+          scrollPosition: pos.scrollPosition,
+          title: pos.title ?? info.title,
+          cover: pos.cover ?? info.cover,
+          chapterTitle: matchingChapter.title,
+        );
+        // 静默持久化回填：确保以后离线也能直接读到标题
+        _progressService.saveLocalScrollPosition(
+          bookId: effectivePos.bookId,
+          chapterId: effectivePos.chapterId,
+          sortNum: effectivePos.sortNum,
+          scrollPosition: effectivePos.scrollPosition,
+          title: effectivePos.title,
+          cover: effectivePos.cover,
+          chapterTitle: effectivePos.chapterTitle,
+        );
+      }
+    }
+
+    // 性能优化：如果数据未变（含章节名），则不触发更新，防止图片重载闪烁
+    if (_lastReadBookInfo?.id == info.id &&
+        _lastReadBookInfo?.cover == info.cover &&
+        _lastReadPosition?.chapterId == effectivePos.chapterId &&
+        _lastReadPosition?.chapterTitle == effectivePos.chapterTitle) {
+      return;
+    }
+
+    // 构建 Book 对象用于 UI 显示
+    final book = Book(
+      id: info.id,
+      title: info.title,
+      cover: info.cover,
+      author: info.author,
+      lastUpdatedAt: info.lastUpdatedAt,
+      category: null,
+      level: 0,
+    );
+
+    setState(() {
+      _lastReadPosition = effectivePos;
+      _lastReadBookInfo = book;
+    });
   }
 
   Future<void> _fetchRanking({bool internalLoading = true}) async {
@@ -294,11 +456,16 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                       IconButton(
                         icon: const Icon(Icons.search),
                         onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const SearchPage(),
-                            ),
-                          );
+                          Navigator.of(context)
+                              .push(
+                                MaterialPageRoute(
+                                  builder: (_) => const SearchPage(),
+                                ),
+                              )
+                              .then((_) {
+                                _loadReadingStats();
+                                _fetchContinueReading(internalLoading: false);
+                              });
                         },
                         tooltip: '搜索',
                       ),
@@ -312,6 +479,8 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                 .where((m) => settings.isModuleEnabled(m))
                 .expand((moduleId) {
                   switch (moduleId) {
+                    case 'continueReading':
+                      return _buildContinueReadingSection(context);
                     case 'stats':
                       return _buildStatsSection(context);
                     case 'recentlyUpdated':
@@ -348,6 +517,123 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
       return '$hours 小时';
     }
     return '$hours 时 $mins 分';
+  }
+
+  /// 构建继续阅读模块
+  List<Widget> _buildContinueReadingSection(BuildContext context) {
+    if (_lastReadBookInfo == null || _lastReadPosition == null) return [];
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final book = _lastReadBookInfo!;
+    final pos = _lastReadPosition!;
+
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                elevation: 0,
+                color: colorScheme.surfaceContainerHighest,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                margin: const EdgeInsets.only(bottom: 16), // 底部间距
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () {
+                    // 快速进入书籍详情页
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder:
+                                (_) => BookDetailPage(
+                                  bookId: book.id,
+                                  initialCoverUrl: book.cover,
+                                  initialTitle: book.title,
+                                  heroTag: 'continue_reading_${book.id}',
+                                ),
+                          ),
+                        )
+                        .then((_) {
+                          _loadReadingStats();
+                          _fetchContinueReading(internalLoading: false);
+                        }); // 返回刷新
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        // 封面
+                        Hero(
+                          tag: 'continue_reading_${book.id}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: LocalShelfCover(
+                              bookId: book.id,
+                              coverUrl: book.cover,
+                              width: 48,
+                              height: 72,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        // 信息
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '继续阅读',
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                book.title,
+                                style: textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                pos.chapterTitle?.isNotEmpty == true
+                                    ? pos.chapterTitle!
+                                    : '第 ${pos.sortNum} 章',
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        // 图标
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
   }
 
   /// 构建统计卡片区域
@@ -627,7 +913,10 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                     ),
               ),
             )
-            .then((_) => _loadReadingStats());
+            .then((_) {
+              _loadReadingStats();
+              _fetchContinueReading(internalLoading: false);
+            });
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -733,6 +1022,55 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 专为“继续阅读”卡片设计的封面渲染组件
+/// 优先使用物理本地文件实现 0 闪烁同步加载
+class LocalShelfCover extends StatelessWidget {
+  final int bookId;
+  final String coverUrl;
+  final double width;
+  final double height;
+
+  const LocalShelfCover({
+    super.key,
+    required this.bookId,
+    required this.coverUrl,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final localPath = LocalCoverService().getLocalCoverPathSync(bookId);
+
+    if (localPath.isNotEmpty && File(localPath).existsSync()) {
+      return Image.file(
+        File(localPath),
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        // 关键：启用 gaplessPlayback 并在组件重建时保持显示旧图
+        gaplessPlayback: true,
+      );
+    }
+
+    // 回退到网络缓存
+    return CachedNetworkImage(
+      imageUrl: coverUrl,
+      width: width,
+      height: height,
+      fit: BoxFit.cover,
+      placeholder:
+          (context, url) => Container(color: colorScheme.surfaceContainerHigh),
+      errorWidget:
+          (context, url, error) => Container(
+            color: colorScheme.surfaceContainerHigh,
+            child: const Icon(Icons.book),
+          ),
     );
   }
 }

@@ -10,12 +10,18 @@ class ReadPosition {
   final int chapterId;
   final int sortNum;
   final double scrollPosition; // 0.0-1.0 滚动百分比
+  final String? title; // 书籍标题
+  final String? cover; // 封面 URL
+  final String? chapterTitle; // 新增：章节标题
 
   ReadPosition({
     required this.bookId,
     required this.chapterId,
     required this.sortNum,
     required this.scrollPosition,
+    this.title,
+    this.cover,
+    this.chapterTitle,
   });
 
   Map<String, dynamic> toJson() => {
@@ -23,6 +29,9 @@ class ReadPosition {
     'chapterId': chapterId,
     'sortNum': sortNum,
     'scrollPosition': scrollPosition,
+    'title': title,
+    'cover': cover,
+    'chapterTitle': chapterTitle,
   };
 
   factory ReadPosition.fromJson(Map<String, dynamic> json) {
@@ -31,6 +40,9 @@ class ReadPosition {
       chapterId: json['chapterId'] as int? ?? 0,
       sortNum: json['sortNum'] as int? ?? 1,
       scrollPosition: (json['scrollPosition'] as num?)?.toDouble() ?? 0.0,
+      title: json['title'] as String?,
+      cover: json['cover'] as String?,
+      chapterTitle: json['chapterTitle'] as String?,
     );
   }
 }
@@ -89,6 +101,9 @@ class ReadingProgressService {
     required int chapterId,
     required int sortNum,
     required double scrollPosition,
+    String? title, // 新增：书籍标题
+    String? cover, // 新增：封面 URL
+    String? chapterTitle, // 新增：章节标题
     DateTime? updatedAt, // 新增：支持指定时间戳 (用于同步)
     bool immediate = false, // 新增：是否立即同步
   }) async {
@@ -102,13 +117,18 @@ class ReadingProgressService {
       chapterId: chapterId,
       sortNum: sortNum,
       scrollPosition: scrollPosition,
+      title: title,
+      cover: cover,
+      chapterTitle: chapterTitle,
     );
 
-    // 格式: chapterId|sortNum|scrollPosition|updatedAt
+    // 格式: chapterId|sortNum|scrollPosition|updatedAt|title|cover|chapterTitle
     final data =
-        '${position.chapterId}|${position.sortNum}|${position.scrollPosition}|${timestamp.toIso8601String()}';
+        '${position.chapterId}|${position.sortNum}|${position.scrollPosition}|${timestamp.toIso8601String()}|${title ?? ''}|${cover ?? ''}|${chapterTitle ?? ''}';
 
     await prefs.setString(key, data);
+    // 更新最后阅读书籍索引，用于极速定位
+    await prefs.setInt('last_read_book_id', bookId);
 
     developer.log('SAVED: key=$key, data=$data', name: 'POSITION');
 
@@ -140,9 +160,15 @@ class ReadingProgressService {
           chapterId: int.parse(parts[0]),
           sortNum: int.parse(parts[1]),
           scrollPosition: double.parse(parts[2]),
+          title:
+              parts.length >= 5 ? (parts[4].isEmpty ? null : parts[4]) : null,
+          cover:
+              parts.length >= 6 ? (parts[5].isEmpty ? null : parts[5]) : null,
+          chapterTitle:
+              parts.length >= 7 ? (parts[6].isEmpty ? null : parts[6]) : null,
         );
         developer.log(
-          'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, scroll=${(pos.scrollPosition * 100).toStringAsFixed(1)}%',
+          'LOAD: chapterId=${pos.chapterId}, sortNum=${pos.sortNum}, scroll=${(pos.scrollPosition * 100).toStringAsFixed(1)}%, title=${pos.title}, chTitle=${pos.chapterTitle}',
           name: 'POSITION',
         );
         return pos;
@@ -152,6 +178,74 @@ class ReadingProgressService {
       _logger.warning('Failed to parse local position: $e');
     }
     return null;
+  }
+
+  /// 获取最后一次阅读的书籍信息（基于本地更新时间）
+  Future<ReadPosition?> getLastReadBook() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. 优先尝试极速索引 (O(1))
+    final lastReadId = prefs.getInt('last_read_book_id');
+    if (lastReadId != null) {
+      final pos = await getLocalScrollPosition(lastReadId);
+      if (pos != null) return pos;
+    }
+
+    // 2. 回退到遍历模式 (仅针对老旧数据或异常情况)
+    final keys = prefs.getKeys().where((k) => k.startsWith('read_pos_'));
+
+    ReadPosition? lastPos;
+    DateTime? lastTime;
+
+    for (final key in keys) {
+      final data = prefs.getString(key);
+      if (data == null) continue;
+
+      try {
+        final parts = data.split('|');
+        if (parts.length >= 4) {
+          // chapterId|sortNum|scrollPosition|updatedAt
+          final updatedAt = DateTime.parse(parts[3]);
+
+          if (lastTime == null || updatedAt.isAfter(lastTime)) {
+            lastTime = updatedAt;
+            // 键格式：read_pos_{bookId}
+            final bookId = int.tryParse(key.replaceFirst('read_pos_', ''));
+            if (bookId != null) {
+              lastPos = ReadPosition(
+                bookId: bookId,
+                chapterId: int.parse(parts[0]),
+                sortNum: int.parse(parts[1]),
+                scrollPosition: double.parse(parts[2]),
+                title:
+                    parts.length >= 5
+                        ? (parts[4].isEmpty ? null : parts[4])
+                        : null,
+                cover:
+                    parts.length >= 6
+                        ? (parts[5].isEmpty ? null : parts[5])
+                        : null,
+                chapterTitle:
+                    parts.length >= 7
+                        ? (parts[6].isEmpty ? null : parts[6])
+                        : null,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        _logger.warning('Failed to parse read pos for key $key: $e');
+      }
+    }
+
+    if (lastPos != null) {
+      developer.log(
+        'Found last read book (via traverse): ${lastPos.bookId} at ${lastTime?.toIso8601String()}',
+        name: 'POSITION',
+      );
+    }
+
+    return lastPos;
   }
 
   /// 私有：本地保存 XPath 位置

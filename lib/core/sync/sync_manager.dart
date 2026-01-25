@@ -519,6 +519,18 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
                   parts.length >= 4
                       ? parts[3]
                       : DateTime.now().toIso8601String(), // 兼容旧数据
+              'title':
+                  parts.length >= 5
+                      ? (parts[4].isEmpty ? null : parts[4])
+                      : null,
+              'cover':
+                  parts.length >= 6
+                      ? (parts[5].isEmpty ? null : parts[5])
+                      : null,
+              'chapterTitle':
+                  parts.length >= 7
+                      ? (parts[6].isEmpty ? null : parts[6])
+                      : null,
             };
           }
         }
@@ -600,6 +612,9 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
             chapterId: data['chapterId'] as int? ?? 0,
             sortNum: data['sortNum'] as int? ?? 1,
             scrollPosition: (data['scrollPosition'] as num?)?.toDouble() ?? 0.0,
+            title: data['title'] as String?,
+            cover: data['cover'] as String?,
+            chapterTitle: data['chapterTitle'] as String?,
             updatedAt: updatedAt, // 传递远程时间戳
           );
         }

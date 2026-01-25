@@ -37,6 +37,7 @@ class ReaderPage extends ConsumerStatefulWidget {
   final int sortNum;
   final int totalChapters;
   final String? coverUrl; // 封面 URL（用于动态取色）
+  final String? bookTitle; // 新增：书籍标题
 
   const ReaderPage({
     super.key,
@@ -44,6 +45,7 @@ class ReaderPage extends ConsumerStatefulWidget {
     required this.sortNum,
     required this.totalChapters,
     this.coverUrl,
+    this.bookTitle,
   });
 
   @override
@@ -272,6 +274,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         chapterId: _chapter!.id,
         sortNum: _chapter!.sortNum,
         scrollPosition: _lastScrollPercent,
+        title: widget.bookTitle,
+        cover: widget.coverUrl,
+        chapterTitle: _chapter?.title,
         immediate: true, // 退出阅读器时立即同步
       );
     }
@@ -345,6 +350,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       chapterId: _chapter!.id,
       sortNum: _chapter!.sortNum,
       scrollPosition: scrollPercent,
+      title: widget.bookTitle,
+      cover: widget.coverUrl,
+      chapterTitle: _chapter?.title,
     );
 
     // 同步服务端（XPath 格式存储百分比）

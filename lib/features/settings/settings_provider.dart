@@ -44,8 +44,18 @@ class AppSettings {
   final bool autoCheckUpdate;
   final String ignoredUpdateVersion; // 忽略的更新版本号
 
-  static const defaultModuleOrder = ['stats', 'ranking', 'recentlyUpdated'];
-  static const defaultEnabledModules = ['stats', 'ranking', 'recentlyUpdated'];
+  static const defaultModuleOrder = [
+    'continueReading',
+    'stats',
+    'ranking',
+    'recentlyUpdated',
+  ];
+  static const defaultEnabledModules = [
+    'continueReading',
+    'stats',
+    'ranking',
+    'recentlyUpdated',
+  ];
   static const defaultBookTypeBadgeScopes = [
     'ranking',
     'recent',
