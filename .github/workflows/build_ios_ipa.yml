@@ -9,7 +9,7 @@ on:
       - 'ios/**'
       - 'rust/**'
       - 'pubspec.yaml'
-      - '.github/workflows/build_ipa.yml'
+      - '.github/workflows/build_ios_ipa.yml'
 
 jobs:
   build-ipa:
