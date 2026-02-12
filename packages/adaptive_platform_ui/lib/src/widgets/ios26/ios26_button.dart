@@ -198,7 +198,8 @@ class _IOS26ButtonState extends State<IOS26Button> {
       });
     }
 
-    if (oldWidget.enabled != widget.enabled) {
+    if (oldWidget.enabled != widget.enabled ||
+        (oldWidget.onPressed == null) != (widget.onPressed == null)) {
       _channel.invokeMethod('setEnabled', {
         'enabled': widget.enabled && widget.onPressed != null,
       });
