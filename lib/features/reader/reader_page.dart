@@ -780,7 +780,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
     // 自定义样式构建器
     // 自定义样式构建器
-    final customStylesBuilder = (dom.Element element) {
+    Map<String, String>? customStylesBuilder(dom.Element element) {
       // 1. 处理浮动类名 (Common in Web novels)
       if (element.classes.contains('fr')) {
         return {'float': 'right', 'margin-left': '0.5em', 'padding': '0'};
@@ -857,10 +857,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         return {'margin': '0', 'padding': '0', 'line-height': '1.6'};
       }
       return null;
-    };
+    }
 
     // 通用 Widget 构建器 (图片缓存)
-    final customWidgetBuilder = (dom.Element element) {
+    Widget? customWidgetBuilder(dom.Element element) {
       if (element.localName == 'img') {
         final src = element.attributes['src'];
         if (src != null && src.isNotEmpty) {
@@ -951,7 +951,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         }
       }
       return null;
-    };
+    }
 
     Widget content;
 
