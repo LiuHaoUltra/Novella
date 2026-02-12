@@ -1379,6 +1379,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                     width: 44,
                     height: 44,
                     child: AdaptiveButton.sfSymbol(
+                      key: ValueKey('prev_btn_${_targetSortNum > 1}'),
                       onPressed: _targetSortNum > 1 ? _onPrev : null,
                       sfSymbol: const SFSymbol('chevron.left', size: 20),
                       style: AdaptiveButtonStyle.glass,
@@ -1399,24 +1400,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                       return AdaptiveFloatingActionButton(
                         mini: true,
                         onPressed: _targetSortNum > 1 ? _onPrev : null,
-                        backgroundColor: colorScheme.primaryContainer,
-                        foregroundColor: colorScheme.onPrimaryContainer,
-                        child: Icon(
-                          PlatformInfo.isIOS
-                              ? CupertinoIcons.chevron_left
-                              : Icons.chevron_left,
-                          size: 20,
-                        ),
+                        backgroundColor: colorScheme.surfaceContainerHighest,
+                        foregroundColor: colorScheme.onSurfaceVariant,
+                        elevation: 0,
+                        child: const Icon(Icons.chevron_left),
                       );
                     },
                   ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 // 下一章
                 if (settings.useIOS26Style)
                   SizedBox(
                     width: 44,
                     height: 44,
                     child: AdaptiveButton.sfSymbol(
+                      key: ValueKey(
+                        'next_btn_${_targetSortNum < widget.totalChapters}',
+                      ),
                       onPressed:
                           _targetSortNum < widget.totalChapters
                               ? _onNext
