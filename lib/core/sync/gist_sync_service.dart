@@ -174,10 +174,17 @@ class GistSyncService {
   // ============================================================
 
   /// 上传 (Create/Update)
-  Future<void> uploadToGist(String encryptedJsonContent) async {
+  Future<void> uploadToGist(
+    String encryptedJsonContent, {
+    String? syncRunId,
+  }) async {
     if (_accessToken == null) {
       throw Exception('未连接 GitHub');
     }
+
+    _logger.info(
+      'SYNC run=$syncRunId stage=gist_upload_prepare gistId=${_gistId ?? 'null'} bytes=${encryptedJsonContent.length}',
+    );
 
     final headers = {
       'Authorization': 'Bearer $_accessToken',
@@ -195,7 +202,7 @@ class GistSyncService {
 
     if (_gistId == null) {
       // 创建新 Gist
-      _logger.info('Creating new Gist...');
+      _logger.info('SYNC run=$syncRunId stage=gist_create_start');
       final response = await http
           .post(
             Uri.parse('https://api.github.com/gists'),
@@ -204,17 +211,25 @@ class GistSyncService {
           )
           .timeout(const Duration(seconds: 30));
 
+      _logger.info(
+        'SYNC run=$syncRunId stage=gist_create_done httpStatus=${response.statusCode}',
+      );
+
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         _gistId = data['id'] as String;
-        _logger.info('Gist created: $_gistId');
+        _logger.info(
+          'SYNC run=$syncRunId stage=gist_create_ok gistId=$_gistId',
+        );
       } else {
         _logger.severe('Failed to create Gist: ${response.body}');
         throw Exception('创建 Gist 失败: ${response.statusCode}');
       }
     } else {
       // 更新已有 Gist
-      _logger.info('Updating Gist $_gistId...');
+      _logger.info(
+        'SYNC run=$syncRunId stage=gist_update_start gistId=$_gistId',
+      );
       final response = await http
           .patch(
             Uri.parse('https://api.github.com/gists/$_gistId'),
@@ -223,8 +238,14 @@ class GistSyncService {
           )
           .timeout(const Duration(seconds: 30));
 
+      _logger.info(
+        'SYNC run=$syncRunId stage=gist_update_done gistId=$_gistId httpStatus=${response.statusCode}',
+      );
+
       if (response.statusCode == 200) {
-        _logger.info('Gist updated successfully');
+        _logger.info(
+          'SYNC run=$syncRunId stage=gist_update_ok gistId=$_gistId',
+        );
       } else if (response.statusCode == 404) {
         // Gist 被删除或丢失
         _logger.warning('Gist not found (404), clearing local ID');
@@ -239,7 +260,7 @@ class GistSyncService {
 
   /// 下载 (Read)
   /// 返回加密后的内容字符串，若无则返回 null
-  Future<String?> downloadFromGist() async {
+  Future<String?> downloadFromGist({String? syncRunId}) async {
     if (_accessToken == null) {
       throw Exception('未连接 GitHub');
     }
@@ -251,14 +272,20 @@ class GistSyncService {
 
     // 如果没有已知的 Gist ID，需要先搜索
     if (_gistId == null) {
-      _gistId = await _findExistingGist();
+      _logger.info('SYNC run=$syncRunId stage=gist_find_start');
+      _gistId = await _findExistingGist(syncRunId: syncRunId);
       if (_gistId == null) {
-        _logger.info('No existing sync Gist found');
+        _logger.info('SYNC run=$syncRunId stage=gist_find_none');
         return null;
       }
+      _logger.info(
+        'SYNC run=$syncRunId stage=gist_find_ok gistId=$_gistId',
+      );
     }
 
-    _logger.info('Downloading from Gist $_gistId...');
+    _logger.info(
+      'SYNC run=$syncRunId stage=gist_download_start gistId=$_gistId',
+    );
     final response = await http
         .get(
           Uri.parse('https://api.github.com/gists/$_gistId'),
@@ -266,13 +293,19 @@ class GistSyncService {
         )
         .timeout(const Duration(seconds: 30));
 
+    _logger.info(
+      'SYNC run=$syncRunId stage=gist_download_done gistId=$_gistId httpStatus=${response.statusCode}',
+    );
+
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final files = data['files'] as Map<String, dynamic>?;
       final syncFile = files?[_gistFileName] as Map<String, dynamic>?;
       final content = syncFile?['content'] as String?;
       if (content != null) {
-        _logger.info('Downloaded ${content.length} bytes from Gist');
+        _logger.info(
+          'SYNC run=$syncRunId stage=gist_download_ok gistId=$_gistId bytes=${content.length}',
+        );
         return content;
       }
     } else if (response.statusCode == 404) {
@@ -288,8 +321,8 @@ class GistSyncService {
   }
 
   /// 查找已有 Gist
-  Future<String?> _findExistingGist() async {
-    _logger.info('Searching for existing sync Gist...');
+  Future<String?> _findExistingGist({String? syncRunId}) async {
+    _logger.info('SYNC run=$syncRunId stage=gist_list_start');
 
     final response = await http
         .get(
@@ -301,6 +334,10 @@ class GistSyncService {
         )
         .timeout(const Duration(seconds: 30));
 
+    _logger.info(
+      'SYNC run=$syncRunId stage=gist_list_done httpStatus=${response.statusCode}',
+    );
+
     if (response.statusCode == 200) {
       final gists = jsonDecode(response.body) as List<dynamic>;
       for (final gist in gists) {
@@ -308,7 +345,7 @@ class GistSyncService {
             (gist as Map<String, dynamic>)['files'] as Map<String, dynamic>?;
         if (files?.containsKey(_gistFileName) == true) {
           final id = gist['id'] as String;
-          _logger.info('Found existing sync Gist: $id');
+          _logger.info('SYNC run=$syncRunId stage=gist_list_match gistId=$id');
           return id;
         }
       }

@@ -253,21 +253,37 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       throw Exception('未连接 GitHub');
     }
 
+    // 同步运行 ID：用于将一次同步链路串起来（可观测性）
+    final syncRunId = DateTime.now().millisecondsSinceEpoch.toString();
+    String stage = 'sync_start';
+
     _isSyncing = true;
     _status = SyncStatus.syncing;
     _errorMessage = null;
     notifyListeners();
 
     try {
+      _logger.info(
+        'SYNC run=$syncRunId stage=$stage status_before=$_status lastKnownSyncId=${_lastKnownSyncId ?? 'null'} gistId=${_gistService.gistId ?? 'null'}',
+      );
+
       // 1. 收集本地
+      stage = 'collect_local';
       final localData = await _collectLocalData();
+      _logger.info(
+        'SYNC run=$syncRunId stage=$stage modules=${localData.modules.keys.join(',')}',
+      );
 
       // 2. 下载远程
-      final remoteEncrypted = await _gistService.downloadFromGist();
+      stage = 'download';
+      final remoteEncrypted = await _gistService.downloadFromGist(
+        syncRunId: syncRunId,
+      );
       SyncData? remoteData;
 
       // 解密 & 缓存 Key
       if (remoteEncrypted != null) {
+        stage = 'decrypt_parse';
         try {
           final decrypted = await compute(_decryptInIsolate, {
             'json': remoteEncrypted,
@@ -275,6 +291,10 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           });
           remoteData = SyncData.fromJson(
             (await _parseJson(decrypted)) as Map<String, dynamic>,
+          );
+
+          _logger.info(
+            'SYNC run=$syncRunId stage=$stage remoteSyncId=${remoteData.syncId ?? 'null'} remoteModules=${remoteData.modules.keys.join(',')}',
           );
 
           // 更新缓存
@@ -299,6 +319,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           rethrow;
         }
       } else {
+        _logger.info('SYNC run=$syncRunId stage=download_remote_empty');
         // 首次初始化 Key
         if (_cachedKey == null) {
           final random = Random.secure();
@@ -315,6 +336,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       }
 
       // 3. 合并与冲突检测
+      stage = 'merge';
       if (remoteData != null && _lastKnownSyncId != null) {
         if (remoteData.syncId != _lastKnownSyncId) {
           _logger.warning(
@@ -322,8 +344,14 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
             'does not match last known ($_lastKnownSyncId). '
             'Merging data instead of simple overwrite.',
           );
+          _logger.warning(
+            'SYNC run=$syncRunId stage=$stage conflictDetected=true lastKnownSyncId=$_lastKnownSyncId remoteSyncId=${remoteData.syncId}',
+          );
         } else {
           _logger.info('No conflict detected, SyncID matches.');
+          _logger.info(
+            'SYNC run=$syncRunId stage=$stage conflictDetected=false',
+          );
         }
       }
 
@@ -331,6 +359,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
           remoteData != null ? localData.mergeWith(remoteData) : localData;
 
       // 4. 加密上传 (复用 CachedKey)
+      stage = 'encrypt_upload';
       if (_cachedKey == null || _cachedSalt == null) {
         throw Exception("Key cache missing");
       }
@@ -342,7 +371,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       );
 
       // 尝试上传
-      await _gistService.uploadToGist(encrypted);
+      await _gistService.uploadToGist(encrypted, syncRunId: syncRunId);
 
       // 上传成功后更新持久化存储中的凭据
       final currentGistId = _gistService.gistId;
@@ -352,6 +381,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
       // 5. 应用合并后的数据 (Update Local)
       // 关键修正：必须应用 mergedData，否则本地的新更改会被远程旧数据覆盖
+      stage = 'apply_remote';
       await _applyRemoteData(mergedData);
 
       // 7. 更新时间
@@ -367,11 +397,18 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
       _retryCount = 0; // 成功后重置重试计数
       _lastFailureTime = null;
       _logger.info('Sync completed successfully');
+      _logger.info(
+        'SYNC run=$syncRunId stage=done lastKnownSyncId=${_lastKnownSyncId ?? 'null'} gistId=${_gistService.gistId ?? 'null'}',
+      );
       notifyListeners();
     } catch (e) {
       _status = SyncStatus.error;
       _errorMessage = e.toString();
       _lastFailureTime = DateTime.now();
+
+      _logger.severe(
+        'SYNC run=$syncRunId stage=$stage status=error error=${e.toString()}',
+      );
 
       // 判断是否应该重试
       final shouldRetry = _shouldRetryError(e);
@@ -435,9 +472,14 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
     _status = SyncStatus.syncing;
 
     try {
-      final remoteEncrypted = await _gistService.downloadFromGist();
+      final syncRunId = DateTime.now().millisecondsSinceEpoch.toString();
+      _logger.info('SYNC run=$syncRunId stage=restore_start');
+      final remoteEncrypted = await _gistService.downloadFromGist(
+        syncRunId: syncRunId,
+      );
       if (remoteEncrypted == null) {
         _status = SyncStatus.idle;
+        _logger.info('SYNC run=$syncRunId stage=restore_no_remote');
         return false;
       }
 
@@ -477,6 +519,7 @@ class SyncManager with ChangeNotifier, WidgetsBindingObserver {
 
       _status = SyncStatus.idle;
       _logger.info('Restore from Gist completed');
+      _logger.info('SYNC run=$syncRunId stage=restore_done');
       return true;
     } catch (e) {
       _logger.severe('Gist sync failed: $e');

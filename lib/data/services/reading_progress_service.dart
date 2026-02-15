@@ -142,6 +142,59 @@ class ReadingProgressService {
     }
   }
 
+  /// 仅回填阅读记录的展示元数据（不改变进度、不刷新 updatedAt、不更新 last_read_book_id、也不触发同步）
+  ///
+  /// 用途：首页“继续阅读”模块补全 title/cover/chapterTitle 时调用，避免污染基于 updatedAt 的多端合并。
+  Future<void> backfillLocalReadMetadata({
+    required int bookId,
+    String? title,
+    String? cover,
+    String? chapterTitle,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'read_pos_$bookId';
+    final data = prefs.getString(key);
+
+    if (data == null) return;
+
+    final parts = data.split('|');
+
+    // 需要至少包含 updatedAt 才能保证不污染时间戳
+    if (parts.length < 4) {
+      _logger.fine(
+        'SYNC_META_BACKFILL skipped for book=$bookId: legacy record without updatedAt',
+      );
+      return;
+    }
+
+    final existingTitle = parts.length >= 5 ? parts[4] : '';
+    final existingCover = parts.length >= 6 ? parts[5] : '';
+    final existingChapterTitle = parts.length >= 7 ? parts[6] : '';
+
+    // 仅在原字段为空时回填，避免覆盖用户已持久化的元数据
+    final newTitle = existingTitle.isNotEmpty ? existingTitle : (title ?? '');
+    final newCover = existingCover.isNotEmpty ? existingCover : (cover ?? '');
+    final newChapterTitle =
+        existingChapterTitle.isNotEmpty
+            ? existingChapterTitle
+            : (chapterTitle ?? '');
+
+    final changed =
+        (newTitle != existingTitle) ||
+        (newCover != existingCover) ||
+        (newChapterTitle != existingChapterTitle);
+
+    if (!changed) return;
+
+    // 保留进度与 updatedAt（parts[0..3]），仅更新元数据字段
+    // 格式: chapterId|sortNum|scrollPosition|updatedAt|title|cover|chapterTitle
+    final rebuilt =
+        '${parts[0]}|${parts[1]}|${parts[2]}|${parts[3]}|$newTitle|$newCover|$newChapterTitle';
+
+    await prefs.setString(key, rebuilt);
+    developer.log('BACKFILL: key=$key, data=$rebuilt', name: 'POSITION');
+  }
+
   /// 获取本地滚动位置
   Future<ReadPosition?> getLocalScrollPosition(int bookId) async {
     final prefs = await SharedPreferences.getInstance();
