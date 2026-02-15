@@ -255,12 +255,12 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           cover: pos.cover ?? info.cover,
           chapterTitle: matchingChapter.title,
         );
-        // 静默持久化回填：确保以后离线也能直接读到标题
-        _progressService.saveLocalScrollPosition(
+        // 静默持久化回填（仅元数据）：
+        // 不得刷新 updatedAt / 不得更新 last_read_book_id / 不得触发 Gist 同步
+        // 以免首页“继续阅读”展示逻辑污染多端基于 updatedAt 的合并决策。
+        // ignore: unawaited_futures
+        _progressService.backfillLocalReadMetadata(
           bookId: effectivePos.bookId,
-          chapterId: effectivePos.chapterId,
-          sortNum: effectivePos.sortNum,
-          scrollPosition: effectivePos.scrollPosition,
           title: effectivePos.title,
           cover: effectivePos.cover,
           chapterTitle: effectivePos.chapterTitle,

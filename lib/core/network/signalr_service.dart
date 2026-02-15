@@ -60,8 +60,16 @@ class SignalRService {
   Completer<void>? _connectionCompleter;
   bool _isStarting = false;
 
+  // 前台恢复时的“门闩”：用于阻塞用户触发的网络操作，直到 token 刷新/重连完成。
+  Completer<void>? _foregroundRecoveryGate;
+
   /// 令牌提供者委托，避免循环依赖
   static Future<String> Function()? tokenProvider;
+
+  /// 强制刷新令牌（忽略内存 TTL），用于 unauthorized/NoToken 自动恢复
+  ///
+  /// 由 AuthService 注入，避免在本文件直接依赖 AuthService。
+  static Future<String> Function()? forceRefreshTokenProvider;
 
   // 内存会话令牌，3秒有效期 (保留作为兜底)
   static final _TokenStorage _sessionToken = _TokenStorage(
@@ -79,6 +87,31 @@ class SignalRService {
 
   bool get isConnected => _hubConnection?.state == HubConnectionState.Connected;
 
+  /// 标记进入前台恢复流程：在此期间 [`invoke()`](lib/core/network/signalr_service.dart:296) 会等待 gate 完成。
+  void beginForegroundRecovery() {
+    if (_foregroundRecoveryGate == null || _foregroundRecoveryGate!.isCompleted) {
+      _foregroundRecoveryGate = Completer<void>();
+      developer.log('Foreground recovery gate BEGIN', name: 'SIGNALR');
+    }
+  }
+
+  /// 标记前台恢复流程结束：释放等待中的请求。
+  void endForegroundRecovery() {
+    final gate = _foregroundRecoveryGate;
+    if (gate != null && !gate.isCompleted) {
+      gate.complete();
+      developer.log('Foreground recovery gate END', name: 'SIGNALR');
+    }
+  }
+
+  Future<void> _waitForForegroundRecovery() async {
+    final gate = _foregroundRecoveryGate;
+    if (gate != null && !gate.isCompleted) {
+      developer.log('Waiting for foreground recovery gate...', name: 'SIGNALR');
+      await gate.future;
+    }
+  }
+
   /// 停止当前连接
   Future<void> stop() async {
     if (_hubConnection != null) {
@@ -91,10 +124,27 @@ class SignalRService {
   }
 
   /// 获取有效会话令牌
-  Future<String> _getValidToken() async {
+  Future<String> _getValidToken({bool forceRefresh = false}) async {
     // 优先使用外部注入的提供者 (如 AuthService)
     if (tokenProvider != null) {
-      return await tokenProvider!();
+      final provided =
+          forceRefresh && forceRefreshTokenProvider != null
+              ? await forceRefreshTokenProvider!()
+              : await tokenProvider!();
+
+      if (provided.isNotEmpty) return provided;
+
+      // provider 返回空：尝试从本地读取旧 session token 兜底
+      final prefs = await SharedPreferences.getInstance();
+      final persisted = prefs.getString('auth_token');
+      if (persisted != null && persisted.isNotEmpty) {
+        developer.log(
+          'tokenProvider returned empty, falling back to persisted auth_token',
+          name: 'SIGNALR',
+        );
+        return persisted;
+      }
+      return '';
     }
 
     // 优先检查内存令牌（3秒有效期）
@@ -103,7 +153,7 @@ class SignalRService {
       return token;
     }
 
-    // 令牌过期或为空，使用 refresh_token 刷新
+    // 令牌过期或为空，使用 refresh_token 刷新（legacy path）
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString('refresh_token');
 
@@ -112,25 +162,76 @@ class SignalRService {
       return '';
     }
 
-    developer.log('Refreshing session token (legacy path)...', name: 'SIGNALR');
-    try {
-      final response = await _dio.post(
-        '/api/user/refresh_token',
-        data: {'token': refreshToken},
-      );
+    developer.log(
+      'Refreshing session token (legacy path)... forceRefresh=$forceRefresh',
+      name: 'SIGNALR',
+    );
 
-      if (response.statusCode == 200 && response.data is Map) {
-        final newToken = response.data['Response'] ?? response.data['Token'];
-        if (newToken != null && newToken is String && newToken.isNotEmpty) {
-          _sessionToken.set(newToken);
-          return newToken;
+    // iOS resumed 后网络可能尚未完全恢复：做一次短重试，避免返回空 token 导致服务端直接 NoToken
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _dio.post(
+          '/api/user/refresh_token',
+          data: {'token': refreshToken},
+        );
+
+        if (response.statusCode == 200 && response.data is Map) {
+          final newToken = response.data['Response'] ?? response.data['Token'];
+          if (newToken != null && newToken is String && newToken.isNotEmpty) {
+            _sessionToken.set(newToken);
+            return newToken;
+          }
+        }
+      } catch (e) {
+        developer.log(
+          'Failed to refresh token (attempt ${attempt + 1}/2): $e',
+          name: 'SIGNALR',
+        );
+        if (attempt == 0) {
+          await Future.delayed(const Duration(milliseconds: 800));
         }
       }
-    } catch (e) {
-      developer.log('Failed to refresh token: $e', name: 'SIGNALR');
+    }
+
+    // 最后兜底：尝试使用已持久化的 auth_token（可能已过期，但比空 token 更容易触发服务端走 unauthorized 分支）
+    final persisted = prefs.getString('auth_token');
+    if (persisted != null && persisted.isNotEmpty) {
+      developer.log(
+        'Refresh failed, falling back to persisted auth_token (may be expired)',
+        name: 'SIGNALR',
+      );
+      return persisted;
     }
 
     return '';
+  }
+
+  bool _isAuthError(Object e) {
+    final msg = e.toString().toLowerCase();
+    // 服务器 Msg 可能包含 token / unauthorized / 权限不足
+    return msg.contains('unauthorized') ||
+        msg.contains('no token') ||
+        msg.contains('notoken') ||
+        msg.contains('token') && (msg.contains('401') || msg.contains('status')) ||
+        msg.contains('权限') ||
+        msg.contains('凭据');
+  }
+
+  Future<void> _recoverFromAuthError() async {
+    developer.log('Attempting auth recovery...', name: 'SIGNALR');
+    // 1) 强制刷新 token（如果注入了强刷提供者）
+    try {
+      final forced = await _getValidToken(forceRefresh: true);
+      developer.log('Forced token ready: ${forced.isNotEmpty}', name: 'SIGNALR');
+    } catch (e) {
+      developer.log('Force refresh token failed: $e', name: 'SIGNALR');
+    }
+
+    // 2) 重建连接
+    try {
+      await stop();
+    } catch (_) {}
+    await init();
   }
 
   Future<void> init() async {
@@ -171,7 +272,8 @@ class SignalRService {
             .withUrl(
               hubUrl,
               options: HttpConnectionOptions(
-                accessTokenFactory: () async => await _getValidToken(),
+                accessTokenFactory:
+                    () async => await _getValidToken(),
                 requestTimeout: 30000, // 30秒请求超时
               ),
             )
@@ -221,10 +323,25 @@ class SignalRService {
 
   Future<T> invoke<T>(String methodName, {List<Object>? args}) async {
     return _requestQueue.enqueue(() async {
-      developer.log(
-        'invoke($methodName) - state: ${_hubConnection?.state}',
-        name: 'SIGNALR',
-      );
+      return await _invokeWithAutoRecover<T>(methodName, args: args);
+    });
+  }
+
+  Future<T> _invokeWithAutoRecover<T>(
+    String methodName, {
+    List<Object>? args,
+    bool retrying = false,
+  }) async {
+    // 若 app 刚从后台回来且正在强制刷新 token，则阻塞用户触发的网络操作
+    await _waitForForegroundRecovery();
+
+    developer.log(
+      'invoke($methodName) - state: ${_hubConnection?.state}',
+      name: 'SIGNALR',
+    );
+
+    // 确保连接就绪（包含 _hubConnection==null 的场景）
+    await ensureConnected();
 
       // 若正在连接/重连，等待最多 15 秒
       if (_hubConnection?.state == HubConnectionState.Connecting ||
@@ -250,17 +367,35 @@ class SignalRService {
         }
       }
 
-      // 最终检查
-      if (_hubConnection?.state != HubConnectionState.Connected) {
-        throw Exception(
-          'SignalR not connected (state: ${_hubConnection?.state})',
-        );
-      }
+    // 最终检查
+    if (_hubConnection?.state != HubConnectionState.Connected) {
+      throw Exception(
+        'SignalR not connected (state: ${_hubConnection?.state})',
+      );
+    }
 
+    try {
       developer.log('Invoking: $methodName', name: 'SIGNALR');
       final result = await _hubConnection!.invoke(methodName, args: args);
       return _processResponse<T>(result);
-    });
+    } catch (e) {
+      developer.log('Invoke error: $e', name: 'SIGNALR');
+
+      if (!retrying && _isAuthError(e)) {
+        developer.log(
+          'Auth-related error detected, recovering & retrying once...',
+          name: 'SIGNALR',
+        );
+        await _recoverFromAuthError();
+        return await _invokeWithAutoRecover<T>(
+          methodName,
+          args: args,
+          retrying: true,
+        );
+      }
+
+      rethrow;
+    }
   }
 
   T _processResponse<T>(dynamic result) {

@@ -141,7 +141,12 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
     if (mounted) {
       setState(() {
         _items = bookItems;
-        _displayedCount = _pageSize.clamp(0, bookItems.length);
+        // 保持分页显示数量不倒退：
+        // 从详情页返回时会触发刷新，如果这里强制重置为第一页（_pageSize），
+        // 且用户当前滚动位置已加载超过一页，会出现“某本书突然消失、滚动后又出现”的错觉。
+        // 典型场景：书架总数=25、_pageSize=24，则第25本书会在刷新后消失。
+        final desiredCount = _displayedCount == 0 ? _pageSize : _displayedCount;
+        _displayedCount = desiredCount.clamp(0, bookItems.length);
         _loading = false;
         _lastRefreshTime = DateTime.now();
       });

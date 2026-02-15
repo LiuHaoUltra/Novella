@@ -520,6 +520,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       if (cached != null) {
         // 使用缓存数据并刷新进度
         _bookInfo = cached;
+        // 关键：即使使用缓存，也要优先采用服务端章节进度作为权威源。
+        // 本地仅用于同章时保留章节内 scroll。
         await _refreshReadingProgress();
         if (mounted && _loading) {
           setState(() => _loading = false);
@@ -651,10 +653,50 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   /// 仅刷新阅读进度（不请求书籍详情）
   Future<void> _refreshReadingProgress() async {
     try {
-      // 获取本地进度
-      final position = await _progressService.getLocalScrollPosition(
+      // 本地进度（用于保留章节内 scroll）
+      ReadPosition? localPosition = await _progressService.getLocalScrollPosition(
         widget.bookId,
       );
+
+      // 服务端章节进度（权威源）：从已加载/缓存的 _bookInfo 中提取
+      ReadPosition? serverPosition;
+      final info = _bookInfo;
+      if (info != null &&
+          info.serverReadPosition != null &&
+          info.serverReadPosition!.chapterId != null) {
+        final serverChapterId = info.serverReadPosition!.chapterId!;
+
+        int? sortNum;
+        for (int i = 0; i < info.chapters.length; i++) {
+          if (info.chapters[i].id == serverChapterId) {
+            sortNum = i + 1;
+            break;
+          }
+        }
+
+        if (sortNum != null) {
+          serverPosition = ReadPosition(
+            bookId: widget.bookId,
+            chapterId: serverChapterId,
+            sortNum: sortNum,
+            scrollPosition: 0.0, // 服务端章节内位置不兼容，保持 0
+          );
+        }
+      }
+
+      // 章节号严格以服务端为准；仅当“同一章节”时才使用本地 scroll
+      ReadPosition? effectivePosition;
+      if (serverPosition != null) {
+        if (localPosition != null &&
+            localPosition.sortNum == serverPosition.sortNum) {
+          effectivePosition = localPosition;
+        } else {
+          effectivePosition = serverPosition;
+        }
+      } else {
+        effectivePosition = localPosition;
+      }
+
       // 获取本地标记
       final mark = await _bookMarkService.getBookMark(widget.bookId);
       // 检查书架状态
@@ -662,7 +704,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
       if (mounted) {
         setState(() {
-          _readPosition = position;
+          _readPosition = effectivePosition;
           _isInShelf = _userService.isInShelf(widget.bookId);
           _currentMark = mark;
         });
@@ -729,41 +771,26 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
         }
       }
 
-      // 对比阅读进度（仅章节号）
-      // 只有服务端章节号 > 本地章节号时才更新
-      // 避免覆盖用户刚阅读后保存的最新进度
+      // 章节级进度权威源：服务端
+      // 规则：若 serverPosition 存在，UI 章节号永远以 server 为准；
+      // 仅当同章时，保留本地 scroll。
       bool positionChanged = false;
+      ReadPosition? effectivePosition;
       if (serverPosition != null) {
-        final currentPos = await _progressService.getLocalScrollPosition(
+        final localPos = await _progressService.getLocalScrollPosition(
           widget.bookId,
         );
-
-        // 仅当服务端章节号严格大于本地时才更新
-        // 这样可以避免从阅读器返回后被旧服务端数据覆盖
-        if (currentPos == null) {
-          positionChanged = true;
-        } else if (serverPosition.sortNum > currentPos.sortNum) {
-          positionChanged = true;
-          _logger.info(
-            'Background sync: server chapter (${serverPosition.sortNum}) > local (${currentPos.sortNum}), updating',
-          );
+        if (localPos != null && localPos.sortNum == serverPosition.sortNum) {
+          effectivePosition = localPos;
         } else {
-          _logger.info(
-            'Background sync: keeping local position (ch${currentPos.sortNum}), server has ch${serverPosition.sortNum}',
-          );
+          effectivePosition = serverPosition;
         }
 
-        if (positionChanged) {
-          _logger.info(
-            'Background sync: reading position updated to ch${serverPosition.sortNum}',
-          );
-          // 保存到本地
-          await _progressService.saveLocalScrollPosition(
-            bookId: widget.bookId,
-            chapterId: serverPosition.chapterId,
-            sortNum: serverPosition.sortNum,
-            scrollPosition: serverPosition.scrollPosition,
-          );
+        if (_readPosition == null) {
+          positionChanged = true;
+        } else if (_readPosition!.sortNum != effectivePosition.sortNum ||
+            _readPosition!.chapterId != effectivePosition.chapterId) {
+          positionChanged = true;
         }
       }
 
@@ -773,8 +800,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
           if (needsUpdate) {
             _bookInfo = info;
           }
-          if (positionChanged && serverPosition != null) {
-            _readPosition = serverPosition;
+          if (positionChanged) {
+            _readPosition = effectivePosition;
           }
         });
       }

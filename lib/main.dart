@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
@@ -7,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/core/logging/log_buffer_service.dart';
+import 'package:novella/core/auth/auth_service.dart';
+import 'package:novella/core/network/signalr_service.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/rust/frb_generated.dart';
@@ -113,14 +116,81 @@ class MyApp extends ConsumerStatefulWidget {
   ConsumerState<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends ConsumerState<MyApp> {
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
   bool _agreed = false;
   bool _loading = true;
+
+  // 在顶层创建一次 Auth/SignalR 实例：
+  // 1) 早注入 tokenProvider；
+  // 2) 便于在 app resumed 时做预热 refresh + 重连。
+  final AuthService _authService = AuthService();
+  final SignalRService _signalRService = SignalRService();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkDisclaimer();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    developer.log('AppLifecycleState=$state', name: 'LIFECYCLE');
+
+    // iOS 上锁屏/后台后，SignalR/WebSocket 常被系统挂起或断开，但连接状态可能不可靠。
+    // 策略：退后台主动 stop，回前台预热 refresh_token -> session token，并重建 SignalR。
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      unawaited(
+        _signalRService.stop().catchError((e) {
+          developer.log('SignalR stop error: $e', name: 'LIFECYCLE');
+        }),
+      );
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_prewarmAuthAndSignalR());
+    }
+  }
+
+  Future<void> _prewarmAuthAndSignalR() async {
+    // 阻塞用户触发的网络操作，直到预热完成
+    _signalRService.beginForegroundRecovery();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final refreshToken = prefs.getString('refresh_token');
+      if (refreshToken == null || refreshToken.isEmpty) {
+        developer.log('No refresh_token, skip prewarm', name: 'LIFECYCLE');
+        return;
+      }
+
+      // 给系统一点时间恢复网络栈（iOS 切回前台瞬间常出现首个请求失败）
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // 按需求：检查 expireTime，若已过期或即将过期则阻塞并立刻刷新。
+      // 这里使用 JWT exp（若可解析）或本地 TTL 作为近似。
+      final expireAt = _authService.sessionTokenExpireTime;
+      developer.log('Token expireAt=$expireAt', name: 'LIFECYCLE');
+
+      final newToken = await _authService.ensureFreshSessionToken();
+      developer.log(
+        'Prewarm ensureFreshSessionToken ok=${newToken.isNotEmpty}',
+        name: 'LIFECYCLE',
+      );
+
+      await _signalRService.init();
+      developer.log('Prewarm SignalR init done', name: 'LIFECYCLE');
+    } catch (e) {
+      developer.log('Prewarm failed: $e', name: 'LIFECYCLE');
+    } finally {
+      _signalRService.endForegroundRecovery();
+    }
   }
 
   Future<void> _checkDisclaimer() async {
