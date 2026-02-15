@@ -1,0 +1,58 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch: # 手动触发
+  push:
+    branches: ["main", "master"]
+    paths:
+      - 'lib/**'
+      - 'android/**'
+      - 'rust/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build_android_apk.yml'
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # 配置 Java 环境
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      # 配置 Flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'master'
+          cache: true
+
+      # 获取依赖
+      - name: Flutter Pub Get
+        run: flutter pub get
+
+      # 构建 APK
+      - name: Build Android APK
+        run: flutter build apk --release --verbose
+
+      # 重命名 APK
+      - name: Rename APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk novella.apk
+
+      # 上传产物
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: novella-android-apk
+          path: novella.apk
