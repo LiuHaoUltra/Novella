@@ -6,6 +6,7 @@ import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
@@ -226,7 +227,7 @@ class HistoryPageState extends ConsumerState<HistoryPage>
   Widget _buildContent(BuildContext context, ColorScheme colorScheme) {
     final settings = ref.watch(settingsProvider);
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: M3ELoadingIndicator());
     }
 
     if (_error != null) {
@@ -300,7 +301,7 @@ class HistoryPageState extends ConsumerState<HistoryPage>
       itemCount: displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
       itemBuilder: (context, index) {
         if (index >= displayBooks.length) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: M3ELoadingIndicator());
         }
         return _buildBookItem(displayBooks[index]);
       },

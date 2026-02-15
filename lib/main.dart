@@ -10,6 +10,7 @@ import 'package:novella/core/sync/sync_manager.dart';
 import 'package:novella/core/logging/log_buffer_service.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/network/signalr_service.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/auth/login_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/rust/frb_generated.dart';
@@ -402,7 +403,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           home:
               _loading
                   ? const Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
+                    body: Center(child: M3ELoadingIndicator()),
                   )
                   : _agreed
                   ? const LoginPage()

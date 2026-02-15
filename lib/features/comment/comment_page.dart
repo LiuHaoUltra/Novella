@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/data/models/comment.dart';
 import 'package:novella/data/services/comment_service.dart';
 import 'package:novella/features/comment/widgets/comment_input_sheet.dart';
@@ -288,7 +289,7 @@ class _CommentPageState extends State<CommentPage> {
       appBar: AppBar(title: const Text('评论')),
       body:
           _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: M3ELoadingIndicator())
               : _error != null
               ? Center(
                 child: Column(
@@ -328,7 +329,7 @@ class _CommentPageState extends State<CommentPage> {
                     if (index == _items.length) {
                       return const Padding(
                         padding: EdgeInsets.all(16.0), // Simplified padding
-                        child: Center(child: CircularProgressIndicator()),
+                        child: Center(child: M3ELoadingIndicator()),
                       );
                     }
 

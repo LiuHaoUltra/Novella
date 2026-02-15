@@ -8,6 +8,7 @@ import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/user_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
 
@@ -210,7 +211,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                   final hasMore = _displayedCount < allFilteredItems.length;
 
                   if (_loading) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const Center(child: M3ELoadingIndicator());
                   }
                   if (allFilteredItems.isEmpty) {
                     return Center(
@@ -260,7 +261,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                       itemBuilder: (context, index) {
                         if (index >= displayItems.length) {
                           return const Center(
-                            child: CircularProgressIndicator(),
+                            child: M3ELoadingIndicator(),
                           );
                         }
                         final item = displayItems[index];
@@ -498,7 +499,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                             ? Container(
                               color: colorScheme.surfaceContainerHighest,
                               child: const Center(
-                                child: CircularProgressIndicator(),
+                                child: M3ELoadingIndicator(),
                               ),
                             )
                             : BookCoverPreviewer(

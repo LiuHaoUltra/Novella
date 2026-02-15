@@ -14,6 +14,7 @@ import 'package:novella/features/reader/reader_page.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/data/models/comment.dart';
 import 'package:novella/features/comment/comment_page.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
 
@@ -1201,7 +1202,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       context,
       colorScheme,
       _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: M3ELoadingIndicator())
           : _error != null
           ? _buildErrorView()
           : _buildContent(colorScheme),
@@ -1742,7 +1743,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                             child: SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: M3ELoadingIndicator(size: 20),
                             ),
                           ),
                         )

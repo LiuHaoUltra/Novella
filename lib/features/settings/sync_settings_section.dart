@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_manager.dart';
@@ -72,7 +73,7 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                     ? const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: M3ELoadingIndicator(size: 24),
                     )
                     : const Icon(Icons.sync),
             title: const Text('立即同步'),
@@ -109,8 +110,8 @@ class _SyncSettingsSectionState extends State<SyncSettingsSection> {
                       ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
+                        child: M3ELoadingIndicator(
+                          size: 20,
                           color: Colors.white,
                         ),
                       )

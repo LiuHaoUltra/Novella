@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novella/features/settings/settings_page.dart';
@@ -258,7 +259,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       ),
       body:
           _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: M3ELoadingIndicator())
               : _hasSearched
               ? _buildSearchResults(colorScheme, textTheme)
               : _buildHistorySection(colorScheme, textTheme),
@@ -393,7 +394,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       itemCount: _results.length + (_loadingMore ? 3 : 0),
       itemBuilder: (context, index) {
         if (index >= _results.length) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: M3ELoadingIndicator());
         }
         final book = _results[index];
         return _buildBookCard(context, book);

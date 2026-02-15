@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/book/book_detail_page.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
@@ -147,7 +148,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
         onRefresh: () => _fetchRanking(refresh: true),
         child:
             _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: M3ELoadingIndicator())
                 : allBooks.isEmpty
                 ? Center(
                   child: Column(
@@ -181,7 +182,7 @@ class _RankingPageState extends ConsumerState<RankingPage>
                       displayBooks.length + (hasMore && _loadingMore ? 3 : 0),
                   itemBuilder: (context, index) {
                     if (index >= displayBooks.length) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const Center(child: M3ELoadingIndicator());
                     }
                     final book = displayBooks[index];
                     return _buildBookCard(context, book, index + 1);

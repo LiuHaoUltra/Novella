@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/utils/font_manager.dart';
 import 'package:novella/features/settings/settings_provider.dart';
 
@@ -148,8 +149,8 @@ class CacheSettingsPage extends ConsumerWidget {
                                   SizedBox(
                                     width: 20,
                                     height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                                    child: M3ELoadingIndicator(
+                                      size: 20,
                                       color: Colors.white,
                                     ),
                                   ),

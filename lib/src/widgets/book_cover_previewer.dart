@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 
 /// 长按封面预览组件
 ///
@@ -92,7 +93,7 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
                             (context, url) => Container(
                               color: Colors.grey[800],
                               child: const Center(
-                                child: CircularProgressIndicator(
+                                child: M3ELoadingIndicator(
                                   color: Colors.white,
                                 ),
                               ),

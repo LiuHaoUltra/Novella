@@ -21,6 +21,7 @@ import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
 import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/widgets/universal_glass_panel.dart';
 
 enum _ReaderLayoutMode { standard, immersive, center }
@@ -605,7 +606,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               onTap: _toggleBars,
               child:
                   _loading
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const Center(child: M3ELoadingIndicator())
                       : _error != null
                       ? _buildErrorView()
                       : _buildWebContent(context, settings),
@@ -900,7 +901,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   height: 200,
                   color: readerTextColor.withValues(alpha: 0.05),
                   child: const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: M3ELoadingIndicator(size: 20),
                   ),
                 ),
             errorWidget:

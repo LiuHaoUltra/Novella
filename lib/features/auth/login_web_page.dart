@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/auth/auth_service.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:webview_windows/webview_windows.dart';
 
 /// WebView 登录页（拦截 fetch 获取 token）
@@ -285,10 +286,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
                 SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colorScheme.primary,
-                  ),
+                  child: M3ELoadingIndicator(size: 16),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -313,7 +311,7 @@ class _LoginWebPageState extends State<LoginWebPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          CircularProgressIndicator(color: colorScheme.primary),
+                          const M3ELoadingIndicator(),
                           const SizedBox(height: 16),
                           Text(
                             _statusText,

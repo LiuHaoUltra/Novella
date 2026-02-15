@@ -14,6 +14,7 @@ import 'package:novella/features/ranking/ranking_page.dart';
 import 'package:novella/features/search/search_page.dart';
 import 'package:novella/data/services/local_cover_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
+import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/src/widgets/book_type_badge.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
 import 'package:novella/main.dart';
@@ -793,7 +794,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           ? const SliverToBoxAdapter(
             child: SizedBox(
               height: 200,
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: M3ELoadingIndicator()),
             ),
           )
           : _latestBooks.isEmpty
@@ -899,7 +900,7 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
           ? const SliverToBoxAdapter(
             child: SizedBox(
               height: 200,
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: M3ELoadingIndicator()),
             ),
           )
           : previewBooks.isEmpty
