@@ -33,6 +33,10 @@ jobs:
           channel: 'master'
           cache: true
 
+      # 预缓存 iOS 引擎工件
+      - name: Precache Flutter iOS Artifacts
+        run: flutter precache --ios
+
       # 获取依赖
       - name: Flutter Pub Get
         run: flutter pub get
