@@ -4,13 +4,11 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   battery_plus
-  desktop_webview_window
   dynamic_color
   flutter_inappwebview_windows
   flutter_secure_storage_windows
   screen_retriever_windows
   url_launcher_windows
-  webview_windows
   window_manager
 )
 

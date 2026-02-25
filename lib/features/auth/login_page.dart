@@ -6,7 +6,7 @@ import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/sync/gist_sync_service.dart';
 import 'package:novella/core/sync/sync_crypto.dart';
 import 'package:novella/core/sync/sync_manager.dart';
-import 'package:novella/features/auth/login_browser_page.dart';
+import 'package:novella/features/auth/login_turnstile_page.dart';
 import 'package:novella/features/main_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -199,7 +199,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _startLogin(BuildContext context) async {
     final result = await Navigator.of(context).push<Map<String, String>>(
-      MaterialPageRoute(builder: (_) => const LoginWebPage()),
+      MaterialPageRoute(builder: (_) => const LoginTurnstilePage()),
     );
 
     if (result != null && context.mounted) {

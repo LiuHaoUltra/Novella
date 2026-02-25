@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:novella/core/network/api_client.dart';
 import 'package:novella/core/network/signalr_service.dart';
@@ -24,6 +25,7 @@ class AuthService {
 
   // 内存令牌缓存，避免冷启动及 SignalR 重复请求
   String? _sessionToken;
+  String? get sessionToken => _sessionToken;
   DateTime? _lastRefreshTime;
   // Web 侧默认 session token validity 为 30s（见 VUE_SESSION_TOKEN_VALIDITY）
   // 这里必须与服务端/原实现接近，否则 iOS 后台较久回来会拿着“自以为有效”的旧 token 触发无Token/unauthorized。
@@ -35,14 +37,35 @@ class AuthService {
   // 令牌刷新互斥锁
   Future<String?>? _refreshFuture;
 
-  Future<bool> login(String username, String password) async {
+  /// 从 DioException 提取服务端返回的错误文案（对齐 Web getErrMsg）。
+  String? _extractServerMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is Map) {
+      return (data['message'] ?? data['Message'] ?? data['msg'] ?? data['Msg'])
+          ?.toString();
+    }
+    if (data is String && data.isNotEmpty) return data;
+    return null;
+  }
+
+  /// 用户登录（需要 Cloudflare Turnstile token）。
+  ///
+  /// 对齐 Web 端：`/api/user/login` payload: { email, password, token }
+  /// 其中 password 为前端 sha256 后的 hex 字符串（见 Web-master/src/utils/hash.ts）。
+  /// 失败时抛出 Exception（携带服务端错误信息），供 UI 展示。
+  Future<void> login(
+    String email,
+    String password, {
+    required String turnstileToken,
+  }) async {
+    final passwordHash = sha256.convert(utf8.encode(password)).toString();
     try {
       final response = await _apiClient.dio.post(
         '/api/user/login',
         data: {
-          'email': username,
-          'password': password,
-          'token': '', // 验证码 token (Turnstile)
+          'email': email,
+          'password': passwordHash,
+          'token': turnstileToken,
         },
       );
 
@@ -50,33 +73,183 @@ class AuthService {
         final data = response.data;
         _logger.info('Login Response: $data');
 
-        final accessToken = data['Token'];
-        final refreshToken = data['RefreshToken'];
-
-        if (accessToken != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('auth_token', accessToken);
-          if (refreshToken != null) {
-            await prefs.setString('refresh_token', refreshToken);
+        if (data is Map) {
+          // 处理形如 { Success: false, Msg: 'xxx' } 的标准防刷/业务错误
+          if (data['Success'] == false) {
+            final msg = data['Msg'] ?? data['msg'] ?? '登录失败，请稍后重试';
+            throw Exception(msg);
           }
 
-          // 写入内存缓存，避免刚登录就立刻再触发 refresh
-          if (accessToken is String && accessToken.isNotEmpty) {
-            _sessionToken = accessToken;
-            _lastRefreshTime = DateTime.now();
-          }
+          if (data['Success'] == true || data['Response'] != null) {
+            final resp = data['Response'] ?? data;
+            final accessToken = resp['Token'];
+            final refreshToken = resp['RefreshToken'];
 
-          await _signalRService.init();
-          return true;
+            if (refreshToken is String && refreshToken.isNotEmpty) {
+              await saveTokens(
+                accessToken is String ? accessToken : '',
+                refreshToken,
+              );
+              return;
+            }
+          } else {
+            // 回退到如果字段直接在顶级
+            final accessToken = data['Token'];
+            final refreshToken = data['RefreshToken'];
+
+            if (refreshToken is String && refreshToken.isNotEmpty) {
+              await saveTokens(
+                accessToken is String ? accessToken : '',
+                refreshToken,
+              );
+              return;
+            }
+          }
         }
       }
-      return false;
-    } catch (e) {
-      _logger.severe('Login Failed: $e');
-      if (e is DioException) {
-        _logger.severe('DioError: ${e.response?.data}');
+      throw Exception('登录返回异常，未能取得授权信息');
+    } on DioException catch (e) {
+      _logger.severe('Login DioException: ${e.response?.data}');
+      throw Exception(_extractServerMessage(e) ?? '网络错误，请检查连接');
+    }
+  }
+
+  /// 发送「注册验证码」邮件（需要 Turnstile token）。
+  ///
+  /// 对齐 Web 端：GET `/api/user/send_register_email` query: { email, token }
+  Future<void> sendRegisterEmail({
+    required String email,
+    required String turnstileToken,
+  }) async {
+    try {
+      final response = await _apiClient.dio.get(
+        '/api/user/send_register_email',
+        queryParameters: {'email': email, 'token': turnstileToken},
+      );
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map && data['Success'] == false) {
+          final msg = data['Msg'] ?? data['msg'] ?? '发送注册验证码失败';
+          throw Exception(msg);
+        }
+      } else {
+        throw Exception('发送注册验证码失败 (${response.statusCode})');
       }
-      return false;
+    } on DioException catch (e) {
+      _logger.severe('sendRegisterEmail DioException: ${e.response?.data}');
+      throw Exception(_extractServerMessage(e) ?? '网络错误，请检查连接');
+    }
+  }
+
+  /// 发送「重置密码」邮件（需要 Turnstile token）。
+  ///
+  /// 对齐 Web 端：GET `/api/user/send_reset_email` query: { email, token }
+  Future<void> sendResetPasswordEmail({
+    required String email,
+    required String turnstileToken,
+  }) async {
+    try {
+      final response = await _apiClient.dio.get(
+        '/api/user/send_reset_email',
+        queryParameters: {'email': email, 'token': turnstileToken},
+      );
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map && data['Success'] == false) {
+          final msg = data['Msg'] ?? data['msg'] ?? '发送重置邮件失败';
+          throw Exception(msg);
+        }
+      } else {
+        throw Exception('发送重置邮件失败 (${response.statusCode})');
+      }
+    } on DioException catch (e) {
+      _logger.severe(
+        'sendResetPasswordEmail DioException: ${e.response?.data}',
+      );
+      throw Exception(_extractServerMessage(e) ?? '网络错误，请检查连接');
+    }
+  }
+
+  /// 注册（使用邮箱验证码 code）。
+  ///
+  /// 对齐 Web 端：POST `/api/user/register` payload:
+  /// { userName, email, password, code, inviteCode }
+  /// 其中 password 为前端 sha256 后的 hex 字符串。
+  /// 失败时抛出 Exception（携带服务端错误信息），供 UI 展示。
+  Future<void> register({
+    required String userName,
+    required String email,
+    required String password,
+    required String code,
+    required String inviteCode,
+  }) async {
+    final passwordHash = sha256.convert(utf8.encode(password)).toString();
+    try {
+      final response = await _apiClient.dio.post(
+        '/api/user/register',
+        data: {
+          'userName': userName,
+          'email': email,
+          'password': passwordHash,
+          'code': code,
+          'inviteCode': inviteCode,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        _logger.info('Register Response: $data');
+
+        if (data is Map) {
+          // 处理形如 { Success: false, Msg: 'xxx' } 的标准防刷/业务错误
+          if (data['Success'] == false) {
+            final msg = data['Msg'] ?? data['msg'] ?? '注册失败，请稍后重试';
+            throw Exception(msg);
+          }
+
+          if (data['Success'] == true || data['Response'] != null) {
+            final resp = data['Response'] ?? data;
+            final accessToken = resp['Token'];
+            final refreshToken = resp['RefreshToken'];
+
+            if (refreshToken is String && refreshToken.isNotEmpty) {
+              await saveTokens(
+                accessToken is String ? accessToken : '',
+                refreshToken,
+              );
+              return;
+            }
+          }
+        }
+      }
+      throw Exception('注册返回异常，未能取得授权信息');
+    } on DioException catch (e) {
+      _logger.severe('Register DioException: ${e.response?.data}');
+      throw Exception(_extractServerMessage(e) ?? '网络错误，请检查连接');
+    }
+  }
+
+  /// 重置密码（使用邮箱验证码 code）。
+  ///
+  /// 对齐 Web 端：POST `/api/user/reset_password` payload: { email, code, newPassword }
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final newPasswordHash = sha256.convert(utf8.encode(newPassword)).toString();
+    final response = await _apiClient.dio.post(
+      '/api/user/reset_password',
+      data: {'email': email, 'code': code, 'newPassword': newPasswordHash},
+    );
+    if (response.statusCode == 200) {
+      final data = response.data;
+      if (data is Map && data['Success'] == false) {
+        final msg = data['Msg'] ?? data['msg'] ?? '重置密码失败';
+        throw Exception(msg);
+      }
+    } else {
+      throw Exception('重置密码失败 (${response.statusCode})');
     }
   }
 
@@ -100,8 +273,10 @@ class AuthService {
       if (payloadObj is! Map) return null;
       final exp = payloadObj['exp'];
       if (exp is int) {
-        return DateTime.fromMillisecondsSinceEpoch(exp * 1000, isUtc: true)
-            .toLocal();
+        return DateTime.fromMillisecondsSinceEpoch(
+          exp * 1000,
+          isUtc: true,
+        ).toLocal();
       }
       return null;
     } catch (_) {
@@ -175,14 +350,18 @@ class AuthService {
       }
     }
 
-    _logger.info('Tokens saved. Initializing SignalR...');
-    // 等待 SignalR 连接就绪（参考 getMyInfo 模式）
+    _logger.info('Tokens saved. Re-initializing SignalR explicitly...');
+    // 等待 SignalR 断开旧连接（如果有）并用新 Token 重新就绪，以防止无身份管道被沿用
     try {
+      await _signalRService.stop();
       await _signalRService.init();
-      developer.log('SignalR initialized successfully', name: 'AUTH');
+      developer.log(
+        'SignalR re-initialized successfully with new token',
+        name: 'AUTH',
+      );
     } catch (e) {
       developer.log('SignalR init error: $e', name: 'AUTH');
-      // 不抛出异常，允许用户重试
+      // 依然不阻断，如果网络真的差，主页请求时会自动重试
     }
   }
 
@@ -314,15 +493,17 @@ class AuthService {
       return false;
     }
 
-    // 在后台启动 SignalR 初始化，不阻塞进入主页的过程
-    // 具体的网络请求会通过 RequestQueue 自动等待连接就绪
-    unawaited(
-      _signalRService.init().catchError((e) {
-        _logger.warning('Background SignalR init failed: $e');
-      }),
-    );
+    // 等待 SignalR 断开旧连接（如果有）并用新 Token 重新就绪，以防止无身份管道被沿用
+    // 阻塞进入主页的过程，展示加载圈，直到连接就绪或失败
+    try {
+      await _signalRService.stop();
+      await _signalRService.init();
+      developer.log('Auto-login token validated & SignalR ready', name: 'AUTH');
+    } catch (e) {
+      _logger.warning('SignalR init failed but auto-login proceeds: $e');
+    }
 
-    _logger.info('Auto-login token validated, proceeding to main page');
+    _logger.info('Auto-login proceeding to main page');
     return true;
   }
 }

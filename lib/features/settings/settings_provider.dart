@@ -45,14 +45,14 @@ class AppSettings {
   final String ignoredUpdateVersion; // 忽略的更新版本号
 
   static const defaultModuleOrder = [
-    'continueReading',
     'stats',
+    'continueReading',
     'ranking',
     'recentlyUpdated',
   ];
   static const defaultEnabledModules = [
-    'continueReading',
     'stats',
+    'continueReading',
     'ranking',
     'recentlyUpdated',
   ];
