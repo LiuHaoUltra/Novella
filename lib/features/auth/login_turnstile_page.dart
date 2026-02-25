@@ -385,11 +385,11 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
                   ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),
               ),
-              TextButton.icon(
+              FilledButton.tonalIcon(
                 onPressed: onForceRefresh,
                 icon: const Icon(Icons.refresh, size: 14),
                 label: const Text('重新验证'),
-                style: TextButton.styleFrom(
+                style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                 ),
               ),

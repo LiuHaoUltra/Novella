@@ -709,11 +709,10 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
 
   @override
   void dispose() {
-    super.dispose();
-    if (!Platform.isWindows) {
-      InAppWebViewController.clearAllCache();
-    }
     _scriptLoadTimer?.cancel();
+    // 释放 keepAlive 持有的 WebView 进程，防止内存泄漏
+    InAppWebViewController.disposeKeepAlive(_keepAlive);
+    super.dispose();
   }
 
   @override

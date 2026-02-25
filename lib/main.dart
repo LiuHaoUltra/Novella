@@ -183,7 +183,8 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
 
     // iOS 上锁屏/后台后，SignalR/WebSocket 常被系统挂起或断开，但连接状态可能不可靠。
     // 策略：退后台主动 stop，回前台预热 refresh_token -> session token，并重建 SignalR。
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       unawaited(
         _signalRService.stop().catchError((e) {
           developer.log('SignalR stop error: $e', name: 'LIFECYCLE');
@@ -345,7 +346,10 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
             );
 
             assert(() {
-              _SystemUiDebug.logOverlayStyle(style, source: 'MaterialApp.builder');
+              _SystemUiDebug.logOverlayStyle(
+                style,
+                source: 'MaterialApp.builder',
+              );
               return true;
             }());
 
@@ -402,9 +406,7 @@ class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
           navigatorObservers: [routeObserver],
           home:
               _loading
-                  ? const Scaffold(
-                    body: Center(child: M3ELoadingIndicator()),
-                  )
+                  ? const Scaffold(body: Center(child: M3ELoadingIndicator()))
                   : _agreed
                   ? const LoginPage()
                   : DisclaimerPage(onAgree: _agree),
@@ -449,11 +451,9 @@ class DisclaimerPage extends StatelessWidget {
                     style: TextStyle(fontSize: 16),
                   ),
                   const SizedBox(height: 32),
-                  ElevatedButton(
+                  FilledButton(
                     onPressed: onAgree,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
-                      foregroundColor: Colors.white,
+                    style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 32,
                         vertical: 16,
