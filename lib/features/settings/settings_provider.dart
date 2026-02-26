@@ -94,7 +94,7 @@ class AppSettings {
     this.readerPresetIndex = 0, // 默认第一个预设（白纸）
     this.readerUseCustomColor = false, // 默认使用预设
     this.iosDisplayStyle = 'md3', // 默认使用 MD3 样式
-    this.autoCheckUpdate = false, // 默认关闭自动检查
+    this.autoCheckUpdate = true, // 默认开启自动检查
     this.ignoredUpdateVersion = '',
   });
 
@@ -250,7 +250,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       readerUseCustomColor:
           prefs.getBool('setting_readerUseCustomColor') ?? false,
       iosDisplayStyle: prefs.getString('setting_iosDisplayStyle') ?? 'md3',
-      autoCheckUpdate: prefs.getBool('setting_autoCheckUpdate') ?? false,
+      autoCheckUpdate: prefs.getBool('setting_autoCheckUpdate') ?? true,
       ignoredUpdateVersion:
           prefs.getString('setting_ignoredUpdateVersion') ?? '',
     );
