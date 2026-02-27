@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,18 +25,17 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
   final _bookService = BookService();
   final _scrollController = ScrollController();
 
-  List<Book> _books = [];
+  final List<Book> _allValidBooks = [];
   bool _loading = true;
-  bool _loadingMore = false;
-  int _currentPage = 1;
-  int _totalPages = 1;
+  int _currentFrontendPage = 1;
+  int _nextBackendPage = 1;
+  bool _hasReachedEnd = false;
   static const int _pageSize = 24; // 匹配后端限制/建议
 
   @override
   void initState() {
     super.initState();
-    _fetchBooks();
-    _scrollController.addListener(_onScroll);
+    _fetchPage(1, isRefresh: true);
   }
 
   @override
@@ -43,42 +44,55 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      if (!_loading && !_loadingMore && _currentPage < _totalPages) {
-        _loadMore();
-      }
-    }
-  }
-
-  Future<void> _fetchBooks({bool refresh = false}) async {
+  Future<void> _fetchPage(int frontendPage, {bool isRefresh = false}) async {
     final settings = ref.read(settingsProvider);
-    if (refresh) {
-      setState(() => _loading = true);
+
+    if (isRefresh) {
+      _allValidBooks.clear();
+      _nextBackendPage = 1;
+      _hasReachedEnd = false;
     }
+
+    setState(() => _loading = true);
 
     try {
-      final result = await _bookService.getBookList(
-        page: 1,
-        size: _pageSize,
-        order: 'latest',
-        ignoreJapanese: settings.ignoreJapanese,
-        ignoreAI: settings.ignoreAI,
-      );
-      // Client-side Level6 filter
-      final filteredBooks =
-          settings.ignoreLevel6
-              ? result.books.where((b) => b.level != 6).toList()
-              : result.books;
+      int targetValidCount = frontendPage * _pageSize;
+
+      // 如果当前积累的有效书籍不够这一页，且后端还没到底，则继续向后端请求
+      while (_allValidBooks.length < targetValidCount && !_hasReachedEnd) {
+        final result = await _bookService.getBookList(
+          page: _nextBackendPage,
+          size: _pageSize,
+          order: 'latest',
+          ignoreJapanese: settings.ignoreJapanese,
+          ignoreAI: settings.ignoreAI,
+        );
+
+        final validBooks =
+            settings.ignoreLevel6
+                ? result.books.where((b) => b.level != 6).toList()
+                : result.books;
+
+        _allValidBooks.addAll(validBooks);
+
+        if (_nextBackendPage >= result.totalPages || result.books.isEmpty) {
+          _hasReachedEnd = true;
+          break;
+        } else {
+          _nextBackendPage++;
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _books = filteredBooks;
-          _currentPage = 1;
-          _totalPages = result.totalPages;
+          _currentFrontendPage = frontendPage;
           _loading = false;
         });
+
+        // 翻页或者刷新时回到顶部
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
       }
     } catch (e) {
       _logger.severe('Failed to fetch books: $e');
@@ -91,39 +105,49 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
     }
   }
 
-  Future<void> _loadMore() async {
-    final settings = ref.read(settingsProvider);
-    setState(() => _loadingMore = true);
+  bool get _canGoNext {
+    if (!_hasReachedEnd) return true;
+    int maxPages = (_allValidBooks.length / _pageSize).ceil();
+    return _currentFrontendPage < maxPages;
+  }
 
-    try {
-      final nextPage = _currentPage + 1;
-      final result = await _bookService.getBookList(
-        page: nextPage,
-        size: _pageSize,
-        order: 'latest',
-        ignoreJapanese: settings.ignoreJapanese,
-        ignoreAI: settings.ignoreAI,
-      );
-      // Client-side Level6 filter
-      final filteredBooks =
-          settings.ignoreLevel6
-              ? result.books.where((b) => b.level != 6).toList()
-              : result.books;
+  Widget _buildPagination() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
-      if (mounted) {
-        setState(() {
-          _books.addAll(filteredBooks);
-          _currentPage = nextPage;
-          _totalPages = result.totalPages;
-          _loadingMore = false;
-        });
-      }
-    } catch (e) {
-      _logger.severe('Failed to load more books: $e');
-      if (mounted) {
-        setState(() => _loadingMore = false);
-      }
-    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed:
+                _currentFrontendPage > 1 && !_loading
+                    ? () => _fetchPage(_currentFrontendPage - 1)
+                    : null,
+            icon: const Icon(Icons.navigate_before),
+            label: const Text('上一页'),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            '第 $_currentFrontendPage 页',
+            style: textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(width: 16),
+          FilledButton.tonalIcon(
+            onPressed:
+                _canGoNext && !_loading
+                    ? () => _fetchPage(_currentFrontendPage + 1)
+                    : null,
+            icon: const Icon(Icons.navigate_next),
+            label: const Text('下一页'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -131,14 +155,21 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
+    final startIndex = (_currentFrontendPage - 1) * _pageSize;
+    final endIndex = math.min(startIndex + _pageSize, _allValidBooks.length);
+    final displayBooks =
+        startIndex < _allValidBooks.length
+            ? _allValidBooks.sublist(startIndex, endIndex)
+            : <Book>[];
+
     return Scaffold(
       appBar: AppBar(title: const Text('最近更新')),
       body: RefreshIndicator(
-        onRefresh: () => _fetchBooks(refresh: true),
+        onRefresh: () => _fetchPage(1, isRefresh: true),
         child:
             _loading
                 ? const Center(child: M3ELoadingIndicator())
-                : _books.isEmpty
+                : displayBooks.isEmpty
                 ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -158,23 +189,33 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
                     ],
                   ),
                 )
-                : GridView.builder(
+                : CustomScrollView(
                   controller: _scrollController,
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 0.58,
-                    crossAxisSpacing: 10,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: _books.length + (_loadingMore ? 3 : 0),
-                  itemBuilder: (context, index) {
-                    if (index >= _books.length) {
-                      return const Center(child: M3ELoadingIndicator());
-                    }
-                    final book = _books[index];
-                    return _buildBookCard(context, book);
-                  },
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.all(12),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              childAspectRatio: 0.58,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 12,
+                            ),
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return _buildBookCard(context, displayBooks[index]);
+                        }, childCount: displayBooks.length),
+                      ),
+                    ),
+                    if (_allValidBooks.isNotEmpty)
+                      SliverToBoxAdapter(child: _buildPagination()),
+                    // 给底部留点安全边距
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: MediaQuery.paddingOf(context).bottom,
+                      ),
+                    ),
+                  ],
                 ),
       ),
     );

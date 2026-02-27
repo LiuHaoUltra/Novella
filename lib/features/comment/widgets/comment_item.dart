@@ -105,6 +105,7 @@ class CommentItemWidget extends StatelessWidget {
       height: radius * 2,
       child: CachedNetworkImage(
         imageUrl: user.avatar,
+        memCacheWidth: 100, // 限制头像的解析内存，即使原图极大也会缩小到100宽解码
         imageBuilder:
             (context, provider) =>
                 CircleAvatar(radius: radius, backgroundImage: provider),

@@ -69,7 +69,8 @@ dependencies:
     path: packages/adaptive_platform_ui
   battery_plus: ^7.0.0
   flutter_markdown: ^0.7.7+1
-  flutter_blurhash: ^0.9.1
+  flutter_blurhash: 
+    path: packages/flutter_blurhash
 
 dev_dependencies:
   flutter_test:

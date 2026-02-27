@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:developer' as developer;
+import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -15,7 +16,6 @@ import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/features/book/book_detail_page.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'package:novella/features/reader/reader_background_page.dart';
@@ -154,12 +154,19 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     _loadChapter(widget.bid, widget.sortNum);
     // 开始记录阅读时长
     _readingTimeService.startSession();
-    // 提取封面颜色用于动态主题
-    _extractColors();
 
     // 初始化全屏和信息栏
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _initInfoBar();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 首次进入时提取封面颜色（Theme.of 需在 didChangeDependencies 中调用）
+    if (_dynamicColorScheme == null) {
+      _extractColors();
+    }
   }
 
   void _initInfoBar() {
@@ -210,17 +217,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     }
   }
 
-  /// 提取封面颜色生成动态配色
-  Future<void> _extractColors() async {
+  /// 从封面 BlurHash 提取颜色生成动态配色
+  void _extractColors() {
     if (widget.coverUrl == null || widget.coverUrl!.isEmpty) return;
 
     // 检查是否开启了封面取色功能
     final settings = ref.read(settingsProvider);
     if (!settings.coverColorExtraction) return;
 
-    final brightness =
-        WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    final isDark = brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final cacheKey = '${widget.bid}_${isDark ? 'dark' : 'light'}';
 
     // 优先检查缓存
@@ -233,32 +238,17 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       return;
     }
 
-    try {
-      final paletteGenerator = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(widget.coverUrl!),
-        size: const Size(24, 24),
-        maximumColorCount: 3,
+    // 从 BlurHash DC 分量同步提取主色
+    final seedColor = CoverUrlUtils.extractSeedColor(widget.coverUrl);
+    if (seedColor != null && mounted) {
+      final scheme = ColorScheme.fromSeed(
+        seedColor: seedColor,
+        brightness: isDark ? Brightness.dark : Brightness.light,
       );
-
-      // 优先使用主导色（覆盖面积大）
-      final seedColor =
-          paletteGenerator.dominantColor?.color ??
-          paletteGenerator.vibrantColor?.color ??
-          paletteGenerator.mutedColor?.color;
-
-      if (seedColor != null && mounted) {
-        final scheme = ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: isDark ? Brightness.dark : Brightness.light,
-        );
-        // 缓存结果
-        _schemeCache[cacheKey] = scheme;
-        setState(() {
-          _dynamicColorScheme = scheme;
-        });
-      }
-    } catch (e) {
-      _logger.warning('Failed to extract colors for reader: $e');
+      _schemeCache[cacheKey] = scheme;
+      setState(() {
+        _dynamicColorScheme = scheme;
+      });
     }
   }
 
@@ -597,54 +587,58 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
-    Widget content = Scaffold(
-      body: Stack(
-        children: [
-          // 主要内容层
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: _toggleBars,
-              child:
-                  _loading
-                      ? const Center(child: M3ELoadingIndicator())
-                      : _error != null
-                      ? _buildErrorView()
-                      : _buildWebContent(context, settings),
-            ),
-          ),
-
-          // 悬浮功能区
-          _buildFloatingTopBar(context),
-          _buildFloatingBottomControls(context),
-        ],
-      ),
+    // 计算当前应用的 Theme
+    final currentTheme = Theme.of(context).copyWith(
+      colorScheme:
+          (settings.coverColorExtraction ? _dynamicColorScheme : null) ??
+          Theme.of(context).colorScheme,
     );
 
-    // AnimatedTheme 平滑过渡颜色
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent, // 顶部状态栏透明（由 SoftEdgeBlur 接管视觉）
-        statusBarIconBrightness:
-            Theme.of(context).brightness == Brightness.dark
-                ? Brightness.light
-                : Brightness.dark,
-        // 底部导航条透明沉浸
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarDividerColor: Colors.transparent,
-        systemNavigationBarIconBrightness:
-            Theme.of(context).brightness == Brightness.dark
-                ? Brightness.light
-                : Brightness.dark,
-      ),
-      child: AnimatedTheme(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOutCubic,
-        data: Theme.of(context).copyWith(
-          colorScheme:
-              (settings.coverColorExtraction ? _dynamicColorScheme : null) ??
-              Theme.of(context).colorScheme,
-        ),
-        child: content,
+    // 用 AnimatedTheme 包裹最外层，确保内部所有组件都能拿到正确的 currentTheme
+    return AnimatedTheme(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      data: currentTheme,
+      child: Builder(
+        builder: (context) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: SystemUiOverlayStyle(
+              statusBarColor:
+                  Colors.transparent, // 顶部状态栏透明（由 SoftEdgeBlur 接管视觉）
+              statusBarIconBrightness:
+                  isDark ? Brightness.light : Brightness.dark,
+              // 底部导航条透明沉浸
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarDividerColor: Colors.transparent,
+              systemNavigationBarIconBrightness:
+                  isDark ? Brightness.light : Brightness.dark,
+            ),
+            child: Scaffold(
+              body: Stack(
+                children: [
+                  // 主要内容层
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: _toggleBars,
+                      child:
+                          _loading
+                              ? const Center(child: M3ELoadingIndicator())
+                              : _error != null
+                              ? _buildErrorView()
+                              : _buildWebContent(context, settings),
+                    ),
+                  ),
+
+                  // 悬浮功能区
+                  _buildFloatingTopBar(context),
+                  _buildFloatingBottomControls(context),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -896,13 +890,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
           final imageWidget = CachedNetworkImage(
             imageUrl: src,
+            memCacheWidth: 1080, // 阅读页插画限定在主流屏幕物理宽度，防止解析4K竖屏超长图导致 OOM
             placeholder:
                 (context, url) => Container(
                   height: 200,
                   color: readerTextColor.withValues(alpha: 0.05),
-                  child: const Center(
-                    child: M3ELoadingIndicator(size: 20),
-                  ),
+                  child: const Center(child: M3ELoadingIndicator(size: 20)),
                 ),
             errorWidget:
                 (context, url, error) => Container(
@@ -1101,6 +1094,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(100),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant
+                                  .withValues(alpha: 0.3),
+                              width: 0.5,
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -1376,9 +1379,18 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
               children: [
                 // 上一章
                 if (settings.useIOS26Style)
-                  SizedBox(
+                  Container(
                     width: 44,
                     height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(1000),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        width: 0.5,
+                      ),
+                    ),
                     child: AdaptiveButton.sfSymbol(
                       key: ValueKey('prev_btn_${_targetSortNum > 1}'),
                       onPressed: _targetSortNum > 1 ? _onPrev : null,
@@ -1411,9 +1423,18 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 const SizedBox(width: 12),
                 // 下一章
                 if (settings.useIOS26Style)
-                  SizedBox(
+                  Container(
                     width: 44,
                     height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(1000),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outlineVariant.withValues(alpha: 0.3),
+                        width: 0.5,
+                      ),
+                    ),
                     child: AdaptiveButton.sfSymbol(
                       key: ValueKey(
                         'next_btn_${_targetSortNum < widget.totalChapters}',

@@ -1118,6 +1118,14 @@ class LocalShelfCover extends StatelessWidget {
         fit: BoxFit.cover,
         // 关键：启用 gaplessPlayback 并在组件重建时保持显示旧图
         gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) {
+          // 如果读取本地物理文件遇到损坏或异常，不抛出红屏错误，而是静默回退到带有 BlurHash 的网络封面
+          return BookCoverImage(
+            imageUrl: coverUrl,
+            width: width,
+            height: height,
+          );
+        },
       );
     }
 

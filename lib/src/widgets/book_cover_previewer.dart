@@ -1,10 +1,7 @@
 import 'dart:ui';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_blurhash/flutter_blurhash.dart';
-import 'package:novella/core/utils/cover_url_utils.dart';
-import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/src/widgets/book_cover_image.dart';
 
 /// 长按封面预览组件
 ///
@@ -43,7 +40,10 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
 
   @override
   void dispose() {
-    _removeOverlay();
+    if (_overlayEntry != null) {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+    }
     _controller.dispose();
     super.dispose();
   }
@@ -72,10 +72,7 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
                 child: ScaleTransition(
                   scale: _animation,
                   child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.9,
-                      maxHeight: MediaQuery.of(context).size.height * 0.8,
-                    ),
+                    height: MediaQuery.of(context).size.height * 0.65,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(widget.borderRadius),
                       boxShadow: [
@@ -86,53 +83,18 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
                         ),
                       ],
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(widget.borderRadius),
-                      child: CachedNetworkImage(
-                        imageUrl: widget.coverUrl!,
-                        fit: BoxFit.contain,
-                        placeholder: (context, url) {
-                          final blurHash = CoverUrlUtils.extractBlurHash(
-                            widget.coverUrl,
-                          );
-                          if (blurHash != null) {
-                            return BlurHash(
-                              hash: blurHash,
-                              imageFit: BoxFit.contain,
-                            );
-                          }
-                          return Container(
-                            color: Colors.grey[800],
-                            child: const Center(
-                              child: M3ELoadingIndicator(color: Colors.white),
-                            ),
-                          );
-                        },
-                        errorWidget:
-                            (context, url, error) => Container(
-                              color: Colors.grey[800],
-                              padding: const EdgeInsets.all(20),
-                              child: const Column(
-                                mainAxisSize: MainAxisSize.min,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.broken_image,
-                                    color: Colors.white70,
-                                    size: 48,
-                                  ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    '加载失败',
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      decoration: TextDecoration.none,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                    child: AspectRatio(
+                      aspectRatio:
+                          0.68, // 匹配绝大多数轻小说封面的物理黄金比例，保证加载前后由于约束突变而造成的先大后小抖动
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(
+                          widget.borderRadius,
+                        ),
+                        child: BookCoverImage(
+                          imageUrl: widget.coverUrl!,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 1000, // 预览图保留高清解析度
+                        ),
                       ),
                     ),
                   ),
@@ -148,11 +110,20 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
     _controller.forward();
   }
 
-  void _removeOverlay() async {
+  void _removeOverlay() {
     if (_overlayEntry != null) {
-      await _controller.reverse();
-      _overlayEntry?.remove();
-      _overlayEntry = null;
+      if (!mounted) {
+        _overlayEntry?.remove();
+        _overlayEntry = null;
+        return;
+      }
+
+      _controller.reverse().whenComplete(() {
+        if (mounted) {
+          _overlayEntry?.remove();
+          _overlayEntry = null;
+        }
+      });
     }
   }
 

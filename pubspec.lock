@@ -279,10 +279,9 @@ packages:
   flutter_blurhash:
     dependency: "direct main"
     description:
-      name: flutter_blurhash
-      sha256: e97b9aff13b9930bbaa74d0d899fec76e3f320aba3190322dcc5d32104e3d25d
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/flutter_blurhash"
+      relative: true
+    source: path
     version: "0.9.1"
   flutter_cache_manager:
     dependency: transitive

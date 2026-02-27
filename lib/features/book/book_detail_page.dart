@@ -1,8 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_blurhash/flutter_blurhash.dart';
+import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/core/sync/sync_manager.dart';
@@ -17,7 +15,6 @@ import 'package:novella/features/settings/settings_page.dart';
 import 'package:novella/data/models/comment.dart';
 import 'package:novella/features/comment/comment_page.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
-import 'package:palette_generator/palette_generator.dart';
 import 'package:novella/src/widgets/book_cover_previewer.dart';
 
 /// 骨架屏加载效果组件
@@ -316,33 +313,7 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   @override
   void initState() {
     super.initState();
-
-    // 尝试立即恢复缓存颜色以防闪烁
-    _tryRestoreCachedColors();
-
     _loadBookInfo();
-    // 延迟提取颜色以避免转场卡顿
-    // Hero 动画约 400ms + 缓冲 = 550ms
-    if (widget.initialCoverUrl != null && widget.initialCoverUrl!.isNotEmpty) {
-      // 等待动画结束，使用双重 PostFrameCallback
-      // 确保不影响后续布局绘制
-      Future.delayed(const Duration(milliseconds: 550), () {
-        if (mounted && !_colorsExtracted) {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted && !_colorsExtracted) {
-              // 额外帧回调确保安全
-              SchedulerBinding.instance.addPostFrameCallback((_) {
-                if (mounted && !_colorsExtracted) {
-                  final isDark =
-                      Theme.of(context).brightness == Brightness.dark;
-                  _extractColors(widget.initialCoverUrl!, isDark);
-                }
-              });
-            }
-          });
-        }
-      });
-    }
   }
 
   @override
@@ -356,31 +327,35 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final brightness = Theme.of(context).brightness;
-    // 检测主题变化并重新提取颜色
-    if (_currentBrightness != null && _currentBrightness != brightness) {
+    final isDark = brightness == Brightness.dark;
+
+    if (_currentBrightness == null) {
+      // 首次调用：尝试恢复缓存或提取颜色
+      _tryRestoreCachedColors(isDark);
+      if (!_colorsExtracted) {
+        final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
+        if (coverUrl != null && coverUrl.isNotEmpty) {
+          _extractColors(coverUrl, isDark);
+        }
+      }
+    } else if (_currentBrightness != brightness) {
+      // 主题变化：重新提取
       _logger.info(
         'Theme changed from $_currentBrightness to $brightness, re-extracting colors',
       );
-      // Reset color extraction state
       _gradientColors = null;
       _dynamicColorScheme = null;
       _colorsExtracted = false;
-      // Re-extract colors for new theme
       final coverUrl = widget.initialCoverUrl ?? _bookInfo?.cover;
       if (coverUrl != null && coverUrl.isNotEmpty) {
-        _extractColors(coverUrl, brightness == Brightness.dark);
+        _extractColors(coverUrl, isDark);
       }
     }
     _currentBrightness = brightness;
   }
 
   /// 尝试同步恢复缓存颜色
-  void _tryRestoreCachedColors() {
-    // 检查对应主题的缓存
-    // 无 Context 时尝试使用平台亮度
-    final brightness =
-        WidgetsBinding.instance.platformDispatcher.platformBrightness;
-    final isDark = brightness == Brightness.dark;
+  void _tryRestoreCachedColors(bool isDark) {
     final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
 
     if (_colorCache.containsKey(cacheKey) &&
@@ -410,8 +385,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
   }
 
-  /// 从封面提取主色调生成渐变背景
-  Future<void> _extractColors(String coverUrl, bool isDark) async {
+  /// 从封面 BlurHash 提取主色调生成渐变背景
+  void _extractColors(String coverUrl, bool isDark) {
     final settings = ref.read(settingsProvider);
     // 如果禁用了封面取色，则不执行
     if (!settings.coverColorExtraction) {
@@ -427,7 +402,6 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
     final cacheKey = '${widget.bookId}_${isDark ? 'dark' : 'light'}';
     if (_colorCache.containsKey(cacheKey) &&
         _schemeCache.containsKey(cacheKey)) {
-      // 直接使用缓存颜色
       _gradientColors = _colorCache[cacheKey]!;
       _dynamicColorScheme = _schemeCache[cacheKey]!;
       _colorsExtracted = true;
@@ -435,86 +409,38 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
       return;
     }
 
-    try {
-      // 提取封面颜色
-      final paletteGenerator = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(coverUrl),
-        size: const Size(50, 75), // Match cover aspect ratio (2:3)
-        maximumColorCount: 3, // Optimal color count for palette
-      );
-
-      if (!mounted) return;
-
-      // 提取前两种颜色以获得平滑渐变
-      // 主色：优先使用主导色，降级为鲜艳色
-      final primary =
-          paletteGenerator.dominantColor?.color ??
-          paletteGenerator.vibrantColor?.color;
-
-      // 次色：柔和或深柔和色
-      final secondary =
-          paletteGenerator.mutedColor?.color ??
-          paletteGenerator.darkMutedColor?.color ??
-          paletteGenerator.lightMutedColor?.color;
-
-      // 构建渐变：主色 -> 中间插值 -> 次色
-      Color color1;
-      Color color2;
-
-      if (primary != null && secondary != null) {
-        color1 = primary;
-        color2 = secondary;
-      } else if (primary != null) {
-        color1 = primary;
-        // 生成第二种颜色
-        color2 =
-            Color.lerp(primary, isDark ? Colors.black : Colors.white, 0.4)!;
-      } else if (secondary != null) {
-        color1 = secondary;
-        color2 =
-            Color.lerp(secondary, isDark ? Colors.black : Colors.white, 0.4)!;
-      } else {
-        setState(() => _coverLoadFailed = true);
-        return;
-      }
-
-      // 根据主题调整颜色
-      color1 = _adjustColorForTheme(color1, isDark);
-      color2 = _adjustColorForTheme(color2, isDark);
-
-      // 插值生成中间色
-      final middleColor = Color.lerp(color1, color2, 0.5)!;
-
-      // 最终 3 色平滑渐变
-      final adjustedColors = [color1, middleColor, color2];
-
-      // 缓存调整后的颜色
-      _colorCache[cacheKey] = List.from(adjustedColors);
-
-      // 使用相同主色生成 ColorScheme
-      // 保持与背景渐变一致
-      // 确保组件颜色协调
-      final seedColor = color1;
-
-      final dynamicScheme = ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: isDark ? Brightness.dark : Brightness.light,
-      );
-
-      // 缓存配色方案
-      _schemeCache[cacheKey] = dynamicScheme;
-
-      if (mounted) {
-        setState(() {
-          _gradientColors = adjustedColors;
-          _dynamicColorScheme = dynamicScheme;
-        });
-      }
-      _colorsExtracted = true;
-    } catch (e) {
-      _logger.warning('Failed to extract colors: $e');
-      if (mounted) setState(() => _coverLoadFailed = true);
+    // 从 BlurHash DC 分量同步提取主色
+    final seedColor = CoverUrlUtils.extractSeedColor(coverUrl);
+    if (seedColor == null) {
+      return;
     }
+
+    // 构建渐变色
+    final color1 = _adjustColorForTheme(seedColor, isDark);
+    final color2 = _adjustColorForTheme(
+      Color.lerp(seedColor, isDark ? Colors.black : Colors.white, 0.4)!,
+      isDark,
+    );
+    final middleColor = Color.lerp(color1, color2, 0.5)!;
+    final adjustedColors = [color1, middleColor, color2];
+
+    // 缓存渐变色
+    _colorCache[cacheKey] = List.from(adjustedColors);
+
+    // 生成 ColorScheme
+    final dynamicScheme = ColorScheme.fromSeed(
+      seedColor: color1,
+      brightness: isDark ? Brightness.dark : Brightness.light,
+    );
+    _schemeCache[cacheKey] = dynamicScheme;
+
+    if (mounted) {
+      setState(() {
+        _gradientColors = adjustedColors;
+        _dynamicColorScheme = dynamicScheme;
+      });
+    }
+    _colorsExtracted = true;
   }
 
   Future<void> _loadBookInfo({bool forceRefresh = false}) async {
@@ -1335,33 +1261,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                     ? BookCoverPreviewer(
                                       borderRadius: 8.0,
                                       coverUrl: coverUrl,
-                                      child: CachedNetworkImage(
+                                      child: BookCoverImage(
                                         imageUrl: coverUrl,
                                         fit: BoxFit.cover,
-                                        placeholder: (_, __) {
-                                          final bh =
-                                              CoverUrlUtils.extractBlurHash(
-                                                coverUrl,
-                                              );
-                                          return bh != null
-                                              ? BlurHash(hash: bh)
-                                              : Container(
-                                                color:
-                                                    colorScheme
-                                                        .surfaceContainerHighest,
-                                              );
-                                        },
-                                        errorWidget:
-                                            (_, __, ___) => Container(
-                                              color: const Color(0xFF3A3A3A),
-                                              child: const Center(
-                                                child: Icon(
-                                                  Icons.menu_book_rounded,
-                                                  size: 40,
-                                                  color: Color(0xFF888888),
-                                                ),
-                                              ),
-                                            ),
                                       ),
                                     )
                                     : Container(
@@ -1618,33 +1520,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                     : BookCoverPreviewer(
                                       borderRadius: 8.0,
                                       coverUrl: coverUrl,
-                                      child: CachedNetworkImage(
+                                      child: BookCoverImage(
                                         imageUrl: coverUrl,
                                         fit: BoxFit.cover,
-                                        placeholder: (_, __) {
-                                          final bh =
-                                              CoverUrlUtils.extractBlurHash(
-                                                coverUrl,
-                                              );
-                                          return bh != null
-                                              ? BlurHash(hash: bh)
-                                              : Container(
-                                                color:
-                                                    colorScheme
-                                                        .surfaceContainerHighest,
-                                              );
-                                        },
-                                        errorWidget:
-                                            (_, __, ___) => Container(
-                                              color: const Color(0xFF3A3A3A),
-                                              child: const Center(
-                                                child: Icon(
-                                                  Icons.menu_book_rounded,
-                                                  size: 40,
-                                                  color: Color(0xFF888888),
-                                                ),
-                                              ),
-                                            ),
                                       ),
                                     ),
                           ),

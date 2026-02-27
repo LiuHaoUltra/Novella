@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
@@ -27,20 +29,20 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   // 状态
   List<String> _history = [];
-  List<Book> _results = [];
-  int _currentPage = 1;
-  int _totalPages = 0;
+  final List<Book> _allValidBooks = [];
+  int _currentFrontendPage = 1;
+  int _nextBackendPage = 1;
+  bool _hasReachedEnd = false;
   bool _loading = false;
-  bool _loadingMore = false;
   bool _hasSearched = false;
   String? _pendingDeleteItem;
   String _lastKeyword = '';
+  static const int _pageSize = 24;
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
-    _scrollController.addListener(_onScroll);
     // 自动聚焦搜索框
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -53,15 +55,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _focusNode.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      if (!_loading && !_loadingMore && _currentPage < _totalPages) {
-        _loadMore();
-      }
-    }
   }
 
   Future<void> _loadHistory() async {
@@ -127,8 +120,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
   }
 
-  Future<void> _search() async {
-    final keyword = _searchController.text.trim();
+  void _submitSearch([String? overrideKeyword]) {
+    final keyword = overrideKeyword ?? _searchController.text.trim();
     if (keyword.isEmpty) return;
 
     // 收起键盘
@@ -136,41 +129,71 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     _addToHistory(keyword);
     _lastKeyword = keyword;
+    if (_searchController.text != keyword) {
+      _searchController.text = keyword;
+    }
+
+    _allValidBooks.clear();
+    _nextBackendPage = 1;
+    _hasReachedEnd = false;
+
+    _fetchPage(1);
+  }
+
+  Future<void> _fetchPage(int page) async {
+    if (_lastKeyword.isEmpty) return;
 
     setState(() {
       _loading = true;
       _hasSearched = true;
-      _results = [];
-      _currentPage = 1;
-      _totalPages = 0;
     });
 
     try {
       final settings = ref.read(settingsProvider);
-      final result = await _bookService.searchBooks(
-        keyword,
-        page: 1,
-        size: 24,
-        ignoreJapanese: settings.ignoreJapanese,
-        ignoreAI: settings.ignoreAI,
-      );
-      // Client-side Level6 filter
-      final filteredBooks =
-          settings.ignoreLevel6
-              ? result.books.where((b) => b.level != 6).toList()
-              : result.books;
-      setState(() {
-        _results = filteredBooks;
-        _currentPage = result.currentPage;
-        _totalPages = result.totalPages;
-        _loading = false;
-      });
+      int targetValidCount = page * _pageSize;
+
+      while (_allValidBooks.length < targetValidCount && !_hasReachedEnd) {
+        final result = await _bookService.searchBooks(
+          _lastKeyword,
+          page: _nextBackendPage,
+          size: _pageSize,
+          ignoreJapanese: settings.ignoreJapanese,
+          ignoreAI: settings.ignoreAI,
+        );
+
+        // Client-side Level6 filter 拿最终列表分页
+        final validBooks =
+            settings.ignoreLevel6
+                ? result.books.where((b) => b.level != 6).toList()
+                : result.books;
+
+        _allValidBooks.addAll(validBooks);
+
+        if (_nextBackendPage >= result.totalPages || result.books.isEmpty) {
+          _hasReachedEnd = true;
+          break;
+        } else {
+          _nextBackendPage++;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _currentFrontendPage = page;
+          _loading = false;
+        });
+
+        // 翻页时回到顶部
+        if (_scrollController.hasClients && page != 1) {
+          _scrollController.jumpTo(0);
+        }
+      }
     } catch (e) {
       _logger.severe('Search failed: $e');
-      setState(() {
-        _loading = false;
-      });
       if (mounted) {
+        setState(() {
+          _loading = false;
+        });
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('搜索失败')));
@@ -178,40 +201,49 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_lastKeyword.isEmpty) return;
+  bool get _canGoNext {
+    if (!_hasReachedEnd) return true;
+    int maxPages = (_allValidBooks.length / _pageSize).ceil();
+    return _currentFrontendPage < maxPages;
+  }
 
-    setState(() => _loadingMore = true);
+  Widget _buildPagination() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
-    try {
-      final settings = ref.read(settingsProvider);
-      final nextPage = _currentPage + 1;
-      final result = await _bookService.searchBooks(
-        _lastKeyword,
-        page: nextPage,
-        size: 24,
-        ignoreJapanese: settings.ignoreJapanese,
-        ignoreAI: settings.ignoreAI,
-      );
-      // Client-side Level6 filter
-      final filteredBooks =
-          settings.ignoreLevel6
-              ? result.books.where((b) => b.level != 6).toList()
-              : result.books;
-      if (mounted) {
-        setState(() {
-          _results.addAll(filteredBooks);
-          _currentPage = nextPage;
-          _totalPages = result.totalPages;
-          _loadingMore = false;
-        });
-      }
-    } catch (e) {
-      _logger.severe('Load more failed: $e');
-      if (mounted) {
-        setState(() => _loadingMore = false);
-      }
-    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed:
+                _currentFrontendPage > 1 && !_loading
+                    ? () => _fetchPage(_currentFrontendPage - 1)
+                    : null,
+            icon: const Icon(Icons.navigate_before),
+            label: const Text('上一页'),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            '第 $_currentFrontendPage 页',
+            style: textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(width: 16),
+          FilledButton.tonalIcon(
+            onPressed:
+                _canGoNext && !_loading
+                    ? () => _fetchPage(_currentFrontendPage + 1)
+                    : null,
+            icon: const Icon(Icons.navigate_next),
+            label: const Text('下一页'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onHistoryTap(String keyword) {
@@ -224,8 +256,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
     // 搜索前收起键盘
     FocusScope.of(context).unfocus();
-    _searchController.text = keyword;
-    _search();
+    _submitSearch(keyword);
   }
 
   void _onHistoryLongPress(String keyword) {
@@ -250,11 +281,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             contentPadding: const EdgeInsets.symmetric(vertical: 15),
             suffixIcon: IconButton(
               icon: const Icon(Icons.search),
-              onPressed: () => _search(),
+              onPressed: () => _submitSearch(),
             ),
           ),
           textInputAction: TextInputAction.search,
-          onSubmitted: (_) => _search(),
+          onSubmitted: (_) => _submitSearch(),
         ),
       ),
       body:
@@ -360,7 +391,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   }
 
   Widget _buildSearchResults(ColorScheme colorScheme, TextTheme textTheme) {
-    if (_results.isEmpty) {
+    if (_allValidBooks.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -382,23 +413,36 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       );
     }
 
-    return GridView.builder(
+    final startIndex = (_currentFrontendPage - 1) * _pageSize;
+    final endIndex = math.min(startIndex + _pageSize, _allValidBooks.length);
+    final displayBooks =
+        startIndex < _allValidBooks.length
+            ? _allValidBooks.sublist(startIndex, endIndex)
+            : <Book>[];
+
+    return CustomScrollView(
       controller: _scrollController,
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.58,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: _results.length + (_loadingMore ? 3 : 0),
-      itemBuilder: (context, index) {
-        if (index >= _results.length) {
-          return const Center(child: M3ELoadingIndicator());
-        }
-        final book = _results[index];
-        return _buildBookCard(context, book);
-      },
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(12),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 0.58,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 12,
+            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              return _buildBookCard(context, displayBooks[index]);
+            }, childCount: displayBooks.length),
+          ),
+        ),
+        if (_allValidBooks.isNotEmpty)
+          SliverToBoxAdapter(child: _buildPagination()),
+        SliverToBoxAdapter(
+          child: SizedBox(height: MediaQuery.paddingOf(context).bottom),
+        ),
+      ],
     );
   }
 
