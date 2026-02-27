@@ -461,6 +461,26 @@ class SettingsNotifier extends Notifier<AppSettings> {
     _save();
   }
 
+  /// 一次性应用所有主题相关设定，避免多次触发 state 更新和硬盘 IO，导致主存重构卡顿
+  void setThemeConfig({
+    required String theme,
+    required int seedColor,
+    required bool useSystemColor,
+    required int dynamicSchemeVariant,
+    required bool useCustomTheme,
+  }) {
+    state = state.copyWith(
+      theme: theme,
+      seedColorValue: seedColor,
+      useSystemColor: useSystemColor,
+      dynamicSchemeVariant: dynamicSchemeVariant,
+      useCustomTheme: useCustomTheme,
+    );
+    _save();
+    BookDetailPageState.clearColorCache();
+    BookInfoCacheService().clear();
+  }
+
   // ==================== 阅读背景颜色设置 ====================
 
   void setReaderUseThemeBackground(bool value) {

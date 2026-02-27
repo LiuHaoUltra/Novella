@@ -49,11 +49,13 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
 
   void _apply() {
     final notifier = ref.read(settingsProvider.notifier);
-    notifier.setTheme(_tempTheme);
-    notifier.setSeedColor(_tempSeedColor);
-    notifier.setUseSystemColor(_tempUseSystemColor);
-    notifier.setDynamicSchemeVariant(_tempVariant);
-    notifier.setUseCustomTheme(_selectedTab == 1);
+    notifier.setThemeConfig(
+      theme: _tempTheme,
+      seedColor: _tempSeedColor,
+      useSystemColor: _tempUseSystemColor,
+      dynamicSchemeVariant: _tempVariant,
+      useCustomTheme: _selectedTab == 1,
+    );
     // 不自动返回，需要手动返回
   }
 
@@ -89,24 +91,45 @@ class _ThemeSelectionPageState extends ConsumerState<ThemeSelectionPage> {
                 ? Brightness.light
                 : MediaQuery.platformBrightnessOf(context);
 
-        // 决定使用的种子色：系统色或用户选择的预设色
-        final effectiveSeedColor =
-            _tempUseSystemColor && lightDynamic != null
-                ? lightDynamic.primary
-                : Color(_tempSeedColor);
+        late ColorScheme previewColorScheme;
+        final Color effectiveSeedColor;
 
-        // 构建预览用的 ColorScheme
-        final variant =
-            _tempVariant >= 0 &&
-                    _tempVariant < DynamicSchemeVariant.values.length
-                ? DynamicSchemeVariant.values[_tempVariant]
-                : DynamicSchemeVariant.tonalSpot;
+        if (_tempUseSystemColor &&
+            lightDynamic != null &&
+            darkDynamic != null) {
+          // 准确对齐 main.dart 的实现，当可获取时直接使用原生 harmonized 的系统调色盘效果最佳
+          effectiveSeedColor = lightDynamic.primary;
+          previewColorScheme =
+              previewBrightness == Brightness.dark
+                  ? darkDynamic.harmonized()
+                  : lightDynamic.harmonized();
+        } else if (_tempUseSystemColor) {
+          // 第一帧异步请求还在路上的空窗期：
+          // 如果发现原来本来就在用系统色，直接以当前外层正在显示的实际 Primary 做种子，杜绝默认红屏闪烁！
+          effectiveSeedColor =
+              settings.useSystemColor
+                  ? Theme.of(context).colorScheme.primary
+                  : Color(_tempSeedColor);
 
-        final previewColorScheme = ColorScheme.fromSeed(
-          seedColor: effectiveSeedColor,
-          brightness: previewBrightness,
-          dynamicSchemeVariant: variant,
-        );
+          previewColorScheme = ColorScheme.fromSeed(
+            seedColor: effectiveSeedColor,
+            brightness: previewBrightness,
+          );
+        } else {
+          // 完全使用自带的预设盘和自定义取色
+          effectiveSeedColor = Color(_tempSeedColor);
+          final variant =
+              _tempVariant >= 0 &&
+                      _tempVariant < DynamicSchemeVariant.values.length
+                  ? DynamicSchemeVariant.values[_tempVariant]
+                  : DynamicSchemeVariant.tonalSpot;
+
+          previewColorScheme = ColorScheme.fromSeed(
+            seedColor: effectiveSeedColor,
+            brightness: previewBrightness,
+            dynamicSchemeVariant: variant,
+          );
+        }
 
         final previewTheme = ThemeData(
           useMaterial3: true,
