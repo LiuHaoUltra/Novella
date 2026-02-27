@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_blurhash/flutter_blurhash.dart';
+import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 
 /// 长按封面预览组件
@@ -89,15 +91,23 @@ class _BookCoverPreviewerState extends State<BookCoverPreviewer>
                       child: CachedNetworkImage(
                         imageUrl: widget.coverUrl!,
                         fit: BoxFit.contain,
-                        placeholder:
-                            (context, url) => Container(
-                              color: Colors.grey[800],
-                              child: const Center(
-                                child: M3ELoadingIndicator(
-                                  color: Colors.white,
-                                ),
-                              ),
+                        placeholder: (context, url) {
+                          final blurHash = CoverUrlUtils.extractBlurHash(
+                            widget.coverUrl,
+                          );
+                          if (blurHash != null) {
+                            return BlurHash(
+                              hash: blurHash,
+                              imageFit: BoxFit.contain,
+                            );
+                          }
+                          return Container(
+                            color: Colors.grey[800],
+                            child: const Center(
+                              child: M3ELoadingIndicator(color: Colors.white),
                             ),
+                          );
+                        },
                         errorWidget:
                             (context, url, error) => Container(
                               color: Colors.grey[800],

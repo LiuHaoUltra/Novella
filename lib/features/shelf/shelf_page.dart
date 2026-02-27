@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -260,9 +260,7 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                           (hasMore && _loadingMore ? 3 : 0),
                       itemBuilder: (context, index) {
                         if (index >= displayItems.length) {
-                          return const Center(
-                            child: M3ELoadingIndicator(),
-                          );
+                          return const Center(child: M3ELoadingIndicator());
                         }
                         final item = displayItems[index];
                         return _buildBookItem(item);
@@ -498,39 +496,14 @@ class ShelfPageState extends ConsumerState<ShelfPage> {
                         book == null
                             ? Container(
                               color: colorScheme.surfaceContainerHighest,
-                              child: const Center(
-                                child: M3ELoadingIndicator(),
-                              ),
+                              child: const Center(child: M3ELoadingIndicator()),
                             )
                             : BookCoverPreviewer(
                               coverUrl: book.cover,
-                              child: CachedNetworkImage(
+                              child: BookCoverImage(
                                 imageUrl: book.cover,
-                                fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
-                                placeholder:
-                                    (context, url) => Container(
-                                      color:
-                                          colorScheme.surfaceContainerHighest,
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.book_outlined,
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                errorWidget:
-                                    (context, url, error) => Container(
-                                      color:
-                                          colorScheme.surfaceContainerHighest,
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.broken_image_outlined,
-                                          color: colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
                               ),
                             ),
                         // 多选模式下选中书籍的红色遮罩

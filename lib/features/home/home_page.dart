@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:novella/data/models/book.dart';
+import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:novella/data/services/book_service.dart';
 import 'package:novella/data/services/reading_time_service.dart';
 import 'package:novella/data/services/reading_progress_service.dart';
@@ -1020,31 +1020,10 @@ class _HomePageState extends ConsumerState<HomePage> with RouteAware {
                     ),
                     child: BookCoverPreviewer(
                       coverUrl: book.cover,
-                      child: CachedNetworkImage(
+                      child: BookCoverImage(
                         imageUrl: book.cover,
-                        fit: BoxFit.cover,
                         width: double.infinity,
                         height: double.infinity,
-                        placeholder:
-                            (context, url) => Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.book_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                        errorWidget:
-                            (context, url, error) => Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.broken_image_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
                       ),
                     ),
                   ),
@@ -1127,16 +1106,8 @@ class LocalShelfCover extends StatelessWidget {
     required this.height,
   });
 
-  static String _canonicalCoverUrl(String url) {
-    if (url.isEmpty) return '';
-    final uri = Uri.tryParse(url);
-    if (uri == null) return url;
-    return uri.replace(query: '', fragment: '').toString();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final localPath = LocalCoverService().getLocalCoverPathSync(bookId);
 
     if (localPath.isNotEmpty && File(localPath).existsSync()) {
@@ -1151,23 +1122,6 @@ class LocalShelfCover extends StatelessWidget {
     }
 
     // 回退到网络缓存
-    return CachedNetworkImage(
-      imageUrl: coverUrl,
-      // 同图不同 URL 时尽量复用同一缓存条目，避免因为 query/token 变化重拉/重淡入。
-      cacheKey: coverUrl.isEmpty ? null : _canonicalCoverUrl(coverUrl),
-      width: width,
-      height: height,
-      fit: BoxFit.cover,
-      useOldImageOnUrlChange: true,
-      fadeInDuration: Duration.zero,
-      fadeOutDuration: Duration.zero,
-      placeholder:
-          (context, url) => Container(color: colorScheme.surfaceContainerHigh),
-      errorWidget:
-          (context, url, error) => Container(
-            color: colorScheme.surfaceContainerHigh,
-            child: const Icon(Icons.book),
-          ),
-    );
+    return BookCoverImage(imageUrl: coverUrl, width: width, height: height);
   }
 }

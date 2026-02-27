@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:novella/src/widgets/book_cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
@@ -216,31 +216,10 @@ class _RecentlyUpdatedPageState extends ConsumerState<RecentlyUpdatedPage> {
                     ),
                     child: BookCoverPreviewer(
                       coverUrl: book.cover,
-                      child: CachedNetworkImage(
+                      child: BookCoverImage(
                         imageUrl: book.cover,
-                        fit: BoxFit.cover,
                         width: double.infinity,
                         height: double.infinity,
-                        placeholder:
-                            (context, url) => Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.book_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                        errorWidget:
-                            (context, url, error) => Container(
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.broken_image_outlined,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
                       ),
                     ),
                   ),

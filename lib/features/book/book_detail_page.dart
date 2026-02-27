@@ -1,4 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_blurhash/flutter_blurhash.dart';
+import 'package:novella/core/utils/cover_url_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -658,9 +660,8 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
   Future<void> _refreshReadingProgress() async {
     try {
       // 本地进度（用于保留章节内 scroll）
-      ReadPosition? localPosition = await _progressService.getLocalScrollPosition(
-        widget.bookId,
-      );
+      ReadPosition? localPosition = await _progressService
+          .getLocalScrollPosition(widget.bookId);
 
       // 服务端章节进度（权威源）：从已加载/缓存的 _bookInfo 中提取
       ReadPosition? serverPosition;
@@ -853,8 +854,9 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
 
           // 1) 先用本地进度即时刷新按钮（同设备刚读完的反馈）
           // 2) 短暂抑制服务端章节号覆盖，避免服务端进度延迟造成“按钮不更新/又回退”
-          _suppressServerPositionUntil =
-              DateTime.now().add(const Duration(seconds: 8));
+          _suppressServerPositionUntil = DateTime.now().add(
+            const Duration(seconds: 8),
+          );
 
           _refreshReadingProgressPreferLocal();
 
@@ -1336,12 +1338,19 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                       child: CachedNetworkImage(
                                         imageUrl: coverUrl,
                                         fit: BoxFit.cover,
-                                        placeholder:
-                                            (_, __) => Container(
-                                              color:
-                                                  colorScheme
-                                                      .surfaceContainerHighest,
-                                            ),
+                                        placeholder: (_, __) {
+                                          final bh =
+                                              CoverUrlUtils.extractBlurHash(
+                                                coverUrl,
+                                              );
+                                          return bh != null
+                                              ? BlurHash(hash: bh)
+                                              : Container(
+                                                color:
+                                                    colorScheme
+                                                        .surfaceContainerHighest,
+                                              );
+                                        },
                                         errorWidget:
                                             (_, __, ___) => Container(
                                               color: const Color(0xFF3A3A3A),
@@ -1612,12 +1621,19 @@ class BookDetailPageState extends ConsumerState<BookDetailPage> {
                                       child: CachedNetworkImage(
                                         imageUrl: coverUrl,
                                         fit: BoxFit.cover,
-                                        placeholder:
-                                            (_, __) => Container(
-                                              color:
-                                                  colorScheme
-                                                      .surfaceContainerHighest,
-                                            ),
+                                        placeholder: (_, __) {
+                                          final bh =
+                                              CoverUrlUtils.extractBlurHash(
+                                                coverUrl,
+                                              );
+                                          return bh != null
+                                              ? BlurHash(hash: bh)
+                                              : Container(
+                                                color:
+                                                    colorScheme
+                                                        .surfaceContainerHighest,
+                                              );
+                                        },
                                         errorWidget:
                                             (_, __, ___) => Container(
                                               color: const Color(0xFF3A3A3A),
