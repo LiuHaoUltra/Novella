@@ -123,7 +123,6 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                       const Spacer(),
-                      // 登录按钮
                       FilledButton(
                         onPressed: () => _startLogin(context),
                         style: FilledButton.styleFrom(
@@ -133,7 +132,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         child: const Text(
-                          '开始登录',
+                          '开始认证',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold, // 加粗

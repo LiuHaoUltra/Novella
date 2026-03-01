@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:novella/core/auth/auth_service.dart';
 import 'package:novella/core/config/turnstile_config.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
+import 'package:novella/features/auth/refresh_token_login_page.dart';
+import 'package:novella/features/main_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 原生登录/注册/找回密码页面（MD3 Outlined），使用 Cloudflare Turnstile 获取 token。
@@ -148,6 +150,18 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
     _registerCodeCooldownTimer?.cancel();
     _resetCodeCooldownTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _startRefreshTokenLogin(BuildContext context) async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const RefreshTokenLoginPage()),
+    );
+
+    if (ok == true && context.mounted) {
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const MainPage()));
+    }
   }
 
   // ─── 校验 ───
@@ -1028,6 +1042,14 @@ class _LoginTurnstilePageState extends State<LoginTurnstilePage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('账号'),
+        actions: [
+          IconButton(
+            onPressed: () => _startRefreshTokenLogin(context),
+            icon: const Icon(Icons.key_outlined),
+            tooltip: '使用 RefreshToken 登录',
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorSize: TabBarIndicatorSize.tab,
