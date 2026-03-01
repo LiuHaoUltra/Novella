@@ -11,14 +11,185 @@ import 'package:cloudflare_turnstile/src/widget/turnstile_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-const String _tokenReceivedJSHandler =
-    'window.flutter_inappwebview.callHandler(`TurnstileToken`, token);';
-const String _errorJSHandler =
-    'window.flutter_inappwebview.callHandler(`TurnstileError`, code);';
-const String _tokenExpiredJSHandler =
-    'window.flutter_inappwebview.callHandler(`TokenExpired`);';
-const String _widgetCreatedJSHandler =
-    'window.flutter_inappwebview.callHandler(`TurnstileWidgetId`, widgetId);';
+// NOTE:
+// 旧版 Android System WebView / Chrome 99 等内核上，`flutter_inappwebview` JS Bridge
+// 注入可能晚于 Turnstile 回调触发，导致 `window.flutter_inappwebview` 仍为 undefined。
+// 这里用“检测 + 等待 flutterInAppWebViewPlatformReady + 轮询兜底”的方式防御竞态。
+const String _tokenReceivedJSHandler = '''
+(function (token) {
+  var sent = false;
+  var onReady = null;
+
+  function canSend() {
+    return window.flutter_inappwebview &&
+      typeof window.flutter_inappwebview.callHandler === 'function';
+  }
+
+  function send() {
+    if (sent) return true;
+    if (!canSend()) return false;
+    sent = true;
+
+    try {
+      window.flutter_inappwebview.callHandler('TurnstileToken', token);
+    } catch (e) {}
+
+    if (onReady) {
+      window.removeEventListener('flutterInAppWebViewPlatformReady', onReady);
+    }
+
+    return true;
+  }
+
+  onReady = function () {
+    send();
+  };
+
+  // Fast path
+  if (send()) return;
+
+  // Wait for JS bridge injection
+  window.addEventListener('flutterInAppWebViewPlatformReady', onReady);
+
+  // Fallback: bridge object may appear without event firing reliably.
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts++;
+    if (send() || attempts >= 60) {
+      clearInterval(timer);
+    }
+  }, 250);
+})(token);
+''';
+
+const String _errorJSHandler = '''
+(function (code) {
+  var sent = false;
+  var onReady = null;
+
+  function canSend() {
+    return window.flutter_inappwebview &&
+      typeof window.flutter_inappwebview.callHandler === 'function';
+  }
+
+  function send() {
+    if (sent) return true;
+    if (!canSend()) return false;
+    sent = true;
+
+    try {
+      window.flutter_inappwebview.callHandler('TurnstileError', String(code));
+    } catch (e) {}
+
+    if (onReady) {
+      window.removeEventListener('flutterInAppWebViewPlatformReady', onReady);
+    }
+
+    return true;
+  }
+
+  onReady = function () {
+    send();
+  };
+
+  if (send()) return;
+  window.addEventListener('flutterInAppWebViewPlatformReady', onReady);
+
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts++;
+    if (send() || attempts >= 60) {
+      clearInterval(timer);
+    }
+  }, 250);
+})(code);
+''';
+
+const String _tokenExpiredJSHandler = '''
+(function () {
+  var sent = false;
+  var onReady = null;
+
+  function canSend() {
+    return window.flutter_inappwebview &&
+      typeof window.flutter_inappwebview.callHandler === 'function';
+  }
+
+  function send() {
+    if (sent) return true;
+    if (!canSend()) return false;
+    sent = true;
+
+    try {
+      window.flutter_inappwebview.callHandler('TokenExpired');
+    } catch (e) {}
+
+    if (onReady) {
+      window.removeEventListener('flutterInAppWebViewPlatformReady', onReady);
+    }
+
+    return true;
+  }
+
+  onReady = function () {
+    send();
+  };
+
+  if (send()) return;
+  window.addEventListener('flutterInAppWebViewPlatformReady', onReady);
+
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts++;
+    if (send() || attempts >= 60) {
+      clearInterval(timer);
+    }
+  }, 250);
+})();
+''';
+
+const String _widgetCreatedJSHandler = '''
+(function (widgetId) {
+  var sent = false;
+  var onReady = null;
+
+  function canSend() {
+    return window.flutter_inappwebview &&
+      typeof window.flutter_inappwebview.callHandler === 'function';
+  }
+
+  function send() {
+    if (sent) return true;
+    if (!canSend()) return false;
+    sent = true;
+
+    try {
+      window.flutter_inappwebview.callHandler('TurnstileWidgetId', widgetId);
+    } catch (e) {}
+
+    if (onReady) {
+      window.removeEventListener('flutterInAppWebViewPlatformReady', onReady);
+    }
+
+    return true;
+  }
+
+  onReady = function () {
+    send();
+  };
+
+  if (send()) return;
+  window.addEventListener('flutterInAppWebViewPlatformReady', onReady);
+
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts++;
+    if (send() || attempts >= 60) {
+      clearInterval(timer);
+    }
+  }, 250);
+})(widgetId);
+''';
 
 /// Cloudflare Turnstile mobile implementation
 class CloudflareTurnstile extends StatefulWidget
@@ -423,6 +594,13 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
     disableVerticalScroll: true,
     supportZoom: false,
     useWideViewPort: false,
+    // 确保 shouldOverrideUrlLoading 在各平台/各 WebView 内核上都能回调，
+    // 以拦截 Turnstile 角标(Privacy/Terms)等外链并交给系统浏览器打开。
+    useShouldOverrideUrlLoading: true,
+    // Turnstile 角标链接可能通过 window.open / target=_blank 打开。
+    // 开启多窗口支持 + onCreateWindow 兜底拦截，避免在小尺寸 WebView 内跳转。
+    supportMultipleWindows: true,
+    javaScriptCanOpenWindowsAutomatically: true,
     disableDefaultErrorPage: true,
     disableContextMenu: true,
     disableLongPressContextMenuOnLinks: true,
@@ -586,11 +764,21 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
           return null;
         },
         shouldOverrideUrlLoading: (controller, navigationAction) async {
-          var reqHost = navigationAction.request.url?.host;
+          final url = navigationAction.request.url;
+          final isMainFrame = navigationAction.isForMainFrame;
+          var reqHost = url?.host;
           if (reqHost == null || reqHost.isEmpty) reqHost = 'about:srcdoc';
 
           final host = baseUri.host;
-          final allowedHosts = RegExp(
+          // 主文档永远不应该跳出 baseUrl；任何主框架跳转都视为外链，交给系统浏览器。
+          // 子 frame 仍需允许 challenges.cloudflare.com 以保证 Turnstile 正常加载。
+          final allowedMainFrameHosts = RegExp(
+            'localhost|'
+            '${RegExp.escape(host)}|'
+            'about:blank|'
+            'about:srcdoc',
+          );
+          final allowedSubFrameHosts = RegExp(
             'localhost|'
             '${RegExp.escape(host)}|'
             r'challenges\.cloudflare\.com|'
@@ -598,10 +786,36 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
             'about:srcdoc',
           );
 
+          final allowedHosts =
+              isMainFrame ? allowedMainFrameHosts : allowedSubFrameHosts;
+
           if (allowedHosts.hasMatch(reqHost)) {
             return NavigationActionPolicy.ALLOW;
           }
+
+          // 外链（如 Turnstile 角标 Privacy/Terms）：用系统浏览器打开，避免在小 WebView 内跳转。
+          // 注意：角标链接可能发生在子 frame 内，因此这里不限制 isMainFrame。
+          if (url != null && (url.scheme == 'http' || url.scheme == 'https')) {
+            try {
+              await InAppBrowser.openWithSystemBrowser(url: url);
+              return NavigationActionPolicy.CANCEL;
+            } on Object catch (_) {
+              // 如果系统浏览器打开失败，回退为允许 WebView 内跳转，至少保证链接可用。
+              return NavigationActionPolicy.ALLOW;
+            }
+          }
+
           return NavigationActionPolicy.CANCEL;
+        },
+        onCreateWindow: (controller, createWindowAction) async {
+          final url = createWindowAction.request.url;
+          if (url != null && (url.scheme == 'http' || url.scheme == 'https')) {
+            try {
+              await InAppBrowser.openWithSystemBrowser(url: url);
+            } on Object catch (_) {}
+          }
+          // 返回 false 取消在当前 WebView 内创建新窗口。
+          return false;
         },
         onLoadStop: (controller, uri) async {
           if (!_isWidgetReady && !mounted) {
@@ -618,7 +832,7 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
           _isTurnstileLoaded = true;
           _ready(true);
           _scriptLoadTimer?.cancel();
-          _scriptLoadTimer = Timer(const Duration(milliseconds: 8000), () {
+          _scriptLoadTimer = Timer(const Duration(seconds: 15), () {
             if (!mounted) return;
             if (!_isRendered) widget.onTimeout?.call();
           });
@@ -653,11 +867,19 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
         }
       },
       shouldOverrideUrlLoading: (controller, navigationAction) async {
-        var reqHost = navigationAction.request.url?.host;
+        final url = navigationAction.request.url;
+        final isMainFrame = navigationAction.isForMainFrame;
+        var reqHost = url?.host;
         if (reqHost == null || reqHost.isEmpty) reqHost = 'about:srcdoc';
 
         final host = baseUri.host;
-        final allowedHosts = RegExp(
+        final allowedMainFrameHosts = RegExp(
+          'localhost|'
+          '${RegExp.escape(host)}|'
+          'about:blank|'
+          'about:srcdoc',
+        );
+        final allowedSubFrameHosts = RegExp(
           'localhost|'
           '${RegExp.escape(host)}|'
           r'challenges\.cloudflare\.com|'
@@ -665,10 +887,36 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
           'about:srcdoc',
         );
 
+        final allowedHosts =
+            isMainFrame ? allowedMainFrameHosts : allowedSubFrameHosts;
+
         if (allowedHosts.hasMatch(reqHost)) {
           return NavigationActionPolicy.ALLOW;
         }
+
+        // 外链（如 Turnstile 角标 Privacy/Terms）：用系统浏览器打开，避免在小 WebView 内跳转。
+        // 注意：角标链接可能发生在子 frame 内，因此这里不限制 isMainFrame。
+        if (url != null && (url.scheme == 'http' || url.scheme == 'https')) {
+          try {
+            await InAppBrowser.openWithSystemBrowser(url: url);
+            return NavigationActionPolicy.CANCEL;
+          } on Object catch (_) {
+            // 如果系统浏览器打开失败，回退为允许 WebView 内跳转，至少保证链接可用。
+            return NavigationActionPolicy.ALLOW;
+          }
+        }
+
         return NavigationActionPolicy.CANCEL;
+      },
+      onCreateWindow: (controller, createWindowAction) async {
+        final url = createWindowAction.request.url;
+        if (url != null && (url.scheme == 'http' || url.scheme == 'https')) {
+          try {
+            await InAppBrowser.openWithSystemBrowser(url: url);
+          } on Object catch (_) {}
+        }
+        // 返回 false 取消在当前 WebView 内创建新窗口。
+        return false;
       },
       onLoadStop: (controller, uri) async {
         if (!_isWidgetReady && !mounted) {
@@ -688,7 +936,7 @@ class _CloudflareTurnstileState extends State<CloudflareTurnstile> {
         _isTurnstileLoaded = true;
         _ready(true);
         _scriptLoadTimer?.cancel();
-        _scriptLoadTimer = Timer(const Duration(milliseconds: 8000), () {
+        _scriptLoadTimer = Timer(const Duration(seconds: 15), () {
           if (!mounted) return;
           if (!_isRendered) {
             widget.onTimeout?.call();
@@ -891,7 +1139,7 @@ class _TurnstileInvisible extends CloudflareTurnstile {
     }
 
     _scriptLoadTimer?.cancel();
-    _scriptLoadTimer = Timer(const Duration(milliseconds: 8000), () {
+    _scriptLoadTimer = Timer(const Duration(seconds: 15), () {
       if (!_isRendered) {
         onTimeout?.call();
       }
