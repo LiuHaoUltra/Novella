@@ -24,8 +24,8 @@ import 'package:adaptive_platform_ui/adaptive_platform_ui.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:novella/core/widgets/m3e_loading_indicator.dart';
 import 'package:novella/core/widgets/universal_glass_panel.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 import 'package:novella/core/utils/xpath_utils.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 enum _ReaderLayoutMode { standard, immersive, center }
 
@@ -51,40 +51,52 @@ class _ReaderLayoutInfo {
   });
 }
 
-class _XPathWidgetFactory extends WidgetFactory {
-  final void Function(String xPath, VisibilityInfo info) onVisibilityChanged;
+class _ReaderBlock {
+  /// 用于渲染的 HTML（通常为某个块级节点的 outerHtml，必要时带 wrapper）。
+  final String html;
 
-  _XPathWidgetFactory(this.onVisibilityChanged);
+  /// 该 block 对应的“逻辑定位”XPath（保留 `//*/` 前缀，便于与服务端协议一致）。
+  final String xPath;
 
-  @override
-  void parse(BuildTree tree) {
-    super.parse(tree);
+  /// 清洗后的 XPath（去掉根前缀），便于匹配与索引。
+  final String cleanXPath;
 
-    final rawXPath = tree.element.attributes['data-xpath'];
-    if (rawXPath != null) {
-      final cleanXPath = XPathUtils.cleanXPath(rawXPath);
-      tree.register(
-        BuildOp(
-          onRenderedChildren: (tree, children) {
-            final built = buildColumnPlaceholder(tree, children);
-            if (built == null) return null;
+  /// 该 block 的纯文本长度（剔除 \u200B 等注入字符）。
+  final int textLength;
 
-            return built.wrapWith(
-              (context, child) => VisibilityDetector(
-                key: Key('xpath_$cleanXPath'),
-                onVisibilityChanged: (info) {
-                  // 回传给业务层时传递原始自带 //*/ 的 xpath 保证上传正常
-                  onVisibilityChanged(rawXPath, info);
-                },
-                child: child,
-              ),
-            );
-          },
-        ),
-      );
-    }
-  }
+  /// block 内图片数量（用于加权进度）。
+  final int imageCount;
+
+  /// block 权重（用于加权进度）。
+  final double weight;
+
+  const _ReaderBlock({
+    required this.html,
+    required this.xPath,
+    required this.cleanXPath,
+    required this.textLength,
+    required this.imageCount,
+    required this.weight,
+  });
 }
+
+class _ReaderBlocksBuildResult {
+  final List<_ReaderBlock> blocks;
+  final Map<String, int> indexByCleanXPath;
+  final List<double> prefixWeights;
+  final double totalWeight;
+
+  const _ReaderBlocksBuildResult({
+    required this.blocks,
+    required this.indexByCleanXPath,
+    required this.prefixWeights,
+    required this.totalWeight,
+  });
+}
+
+// Route B：阅读定位改为基于 block 虚拟化（ScrollablePositionedList + ItemPositionsListener）。
+// 原先的 _XPathWidgetFactory + VisibilityDetector（对每个节点包裹）在长章下会产生巨量 detector，
+// 导致滚动期间回调密集与额外的 build/layout 压力，因此移除。
 
 class ReaderPage extends ConsumerStatefulWidget {
   final int bid;
@@ -118,7 +130,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   final _fontManager = FontManager();
   final _progressService = ReadingProgressService();
   final _readingTimeService = ReadingTimeService();
-  final ScrollController _scrollController = ScrollController();
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionsListener =
+      ItemPositionsListener.create();
 
   late AnimationController _barsAnimController;
 
@@ -134,12 +148,24 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   // 滚动保存防抖计时器
   Timer? _savePositionTimer;
-  // 缓存位置用于销毁时同步保存
-  double _lastScrollPercent = 0.0;
 
-  // 保存当前可见节点的 XPath 和偏移量
-  final Map<String, VisibilityInfo> _visibleElements = {};
+  // ========== 逻辑进度（Route B） ==========
+  // 逻辑进度 0..1（加权，避免依赖像素滚动）
+  final ValueNotifier<double> _readProgressNotifier =
+      ValueNotifier<double>(0.0);
+
+  // 当前顶端可见 block index
+  int _topVisibleBlockIndex = 0;
+
+  // 当前顶端可见 block 的 XPath（保留 //*/ 前缀，用于同步/恢复）
   String _lastTopVisibleXPath = '//*';
+
+  // 本章 blocks 缓存（虚拟化渲染 + 逻辑进度）
+  _ReaderBlocksBuildResult? _blocksResult;
+
+  // 布局信息缓存（避免 build 期间反复 parse）
+  _ReaderLayoutInfo _layoutInfo =
+      const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
 
   // 图片宽高比缓存，key: srcUrl, value: 宽高比 (width/height)
   // 用于懒加载中维持插画的绝对原比例高度占位
@@ -150,19 +176,18 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   SharedPreferences? _prefs;
 
-  // 预处理后的章节 HTML（脚注/注释已抽离隐藏）
-  String? _renderedChapterHtml;
   // 脚注/注释内容映射：id -> innerHtml
   Map<String, String> _footnoteNotesById = const {};
 
   // ColorScheme 静态缓存
   static final Map<String, ColorScheme> _schemeCache = {};
 
-  // 顶部信息栏状态
+  // 顶部信息栏状态（使用 ValueNotifier 隔离定时刷新，避免整页 setState 触发正文重建）
   final Battery _battery = Battery();
-  int _batteryLevel = 100;
-  BatteryState _batteryState = BatteryState.unknown;
-  String _timeString = '';
+  final ValueNotifier<int> _batteryLevelNotifier = ValueNotifier<int>(100);
+  final ValueNotifier<BatteryState> _batteryStateNotifier =
+      ValueNotifier<BatteryState>(BatteryState.unknown);
+  final ValueNotifier<String> _timeStringNotifier = ValueNotifier<String>('');
   Timer? _infoTimer;
   StreamSubscription<BatteryState>? _batteryStateSubscription;
 
@@ -170,6 +195,57 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
   int _loadVersion = 0;
   // 目标章节号（用于连续点击时追踪最终目标）
   late int _targetSortNum;
+
+  // Route B 采用 ScrollablePositionedList，不再需要 visibility_detector。
+
+  bool _exitInProgress = false;
+
+  /// 退出阅读器前保存进度。
+  ///
+  /// 目标：保证“本地 read_pos_*”已落盘，避免返回详情页/立刻再次进入时读到旧值；
+  /// 服务端回传（SaveReadPosition）不阻塞退出。
+  Future<void> _saveProgressForExit() async {
+    if (_exitInProgress) return;
+    _exitInProgress = true;
+
+    final chapter = _chapter;
+    if (chapter == null || _blocksResult == null) return;
+
+    final currentXPath = _getTopVisibleXPath();
+
+    // 1) 本地必须先落盘（await）
+    await _progressService.saveLocalPosition(
+      bookId: widget.bid,
+      chapterId: chapter.id,
+      sortNum: chapter.sortNum,
+      xPath: currentXPath,
+      title: widget.bookTitle,
+      cover: widget.coverUrl,
+      chapterTitle: chapter.title,
+      immediate: true, // 退出时尽量立即触发同步（若启用）
+    );
+
+    // 2) 服务端回传不阻塞 UI
+    // ignore: unawaited_futures
+    _progressService.saveReadPosition(
+      bookId: widget.bid,
+      chapterId: chapter.id,
+      xPath: currentXPath,
+    );
+  }
+
+  Future<void> _exitReaderPage() async {
+    // 避免用户连点返回导致“未等待本地落盘”就 pop
+    if (_exitInProgress) return;
+    await _saveProgressForExit();
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
+  Future<bool> _onWillPop() async {
+    await _saveProgressForExit();
+    return true;
+  }
 
   /// 获取当前阅读背景色
   Color _getReaderBackgroundColor(AppSettings settings) {
@@ -187,23 +263,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           kReaderPresets.length - 1,
         )]
         .backgroundColor;
-  }
-
-  void _onVisibilityChanged(String xPath, VisibilityInfo info) {
-    if (info.visibleFraction == 0) {
-      _visibleElements.remove(xPath);
-    } else {
-      _visibleElements[xPath] = info;
-    }
-
-    if (_visibleElements.isNotEmpty) {
-      var entries = _visibleElements.entries.toList();
-      entries.sort(
-        (a, b) =>
-            a.value.visibleBounds.top.compareTo(b.value.visibleBounds.top),
-      );
-      _lastTopVisibleXPath = entries.first.key;
-    }
   }
 
   String _getTopVisibleXPath() {
@@ -228,6 +287,361 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         .textColor;
   }
 
+  // ==================== Route B：block 构建/定位/进度 ====================
+
+  static const double _kImageWeight = 280.0;
+  static const double _kMinBlockWeight = 1.0;
+
+  static const Set<String> _kStructuralBlockTags = {
+    'p',
+    'div',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'li',
+    'blockquote',
+    'table',
+    'pre',
+    'center',
+  };
+
+  static const Set<String> _kBlockTags = {
+    ..._kStructuralBlockTags,
+    'img',
+    'hr',
+  };
+
+  bool _isElementHidden(dom.Element el) {
+    final style = (el.attributes['style'] ?? '').toLowerCase();
+    return RegExp(r'display\s*:\s*none').hasMatch(style);
+  }
+
+  bool _shouldTreatDivAsBlock(dom.Element el) {
+    // div 作为 block：必须是“叶子”div（没有直接的结构性 block 子元素）。
+    final hasDirectStructuralChild = el.nodes.any(
+      (n) => n is dom.Element && _kStructuralBlockTags.contains(n.localName),
+    );
+    if (hasDirectStructuralChild) return false;
+
+    final text =
+        (el.text)
+            .replaceAll('\u200B', '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+    final hasImg = el.getElementsByTagName('img').isNotEmpty;
+    return text.isNotEmpty || hasImg;
+  }
+
+  bool _shouldTreatElementAsBlock(dom.Element el) {
+    final tag = el.localName ?? '';
+    if (!_kBlockTags.contains(tag)) return false;
+    if (_isElementHidden(el)) return false;
+
+    if (tag == 'div') {
+      return _shouldTreatDivAsBlock(el);
+    }
+
+    if (tag == 'hr') return true;
+    if (tag == 'img') return true;
+
+    final text =
+        (el.text)
+            .replaceAll('\u200B', '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+    final hasImg = el.getElementsByTagName('img').isNotEmpty;
+    return text.isNotEmpty || hasImg;
+  }
+
+  double _computeBlockWeight({required int textLength, required int imageCount}) {
+    final raw = textLength.toDouble() + (imageCount * _kImageWeight);
+    return raw < _kMinBlockWeight ? _kMinBlockWeight : raw;
+  }
+
+  _ReaderBlocksBuildResult _buildBlocksFromHtml(String html) {
+    final fragment = html_parser.parseFragment(html);
+
+    final blocks = <_ReaderBlock>[];
+    final indexByCleanXPath = <String, int>{};
+    final prefixWeights = <double>[];
+    double totalWeight = 0.0;
+
+    void addBlock(dom.Element el, String rawXPath) {
+      final tag = el.localName ?? '';
+
+      final normalizedText =
+          (el.text)
+              .replaceAll('\u200B', '')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+      final textLength = normalizedText.length;
+
+      final imageCount =
+          tag == 'img' ? 1 : el.getElementsByTagName('img').length;
+
+      final weight = _computeBlockWeight(
+        textLength: textLength,
+        imageCount: imageCount,
+      );
+
+      final clean = XPathUtils.cleanXPath(rawXPath);
+
+      final block = _ReaderBlock(
+        html: el.outerHtml,
+        xPath: rawXPath,
+        cleanXPath: clean,
+        textLength: textLength,
+        imageCount: imageCount,
+        weight: weight,
+      );
+
+      indexByCleanXPath.putIfAbsent(clean, () => blocks.length);
+      blocks.add(block);
+
+      totalWeight += weight;
+      prefixWeights.add(totalWeight);
+    }
+
+    void walk(dom.Node node, String currentPath) {
+      if (node is dom.Element) {
+        final tag = node.localName ?? '';
+
+        // 构建当前层级 XPath 片段（与 XPathUtils._traverseAndInject 同构）
+        int index = 1;
+        final parent = node.parentNode;
+        if (parent != null) {
+          for (final sibling in parent.nodes) {
+            if (sibling == node) break;
+            if (sibling is dom.Element && sibling.localName == tag) {
+              index++;
+            }
+          }
+        }
+
+        String myPath = '$currentPath/$tag[$index]';
+        if (currentPath.isEmpty) {
+          myPath = '//*/$tag[$index]';
+        }
+
+        // display:none 的注释节点：不进入 block 列表，也不下钻（保持 DOM 结构用于 XPath index）。
+        if (_isElementHidden(node)) {
+          return;
+        }
+
+        if (_shouldTreatElementAsBlock(node)) {
+          addBlock(node, myPath);
+          return; // block 叶子：不再下钻，避免重复拆分
+        }
+
+        // 非 block：继续下钻
+        for (final child in node.nodes) {
+          walk(child, myPath);
+        }
+      }
+    }
+
+    for (final node in fragment.nodes) {
+      walk(node, '');
+    }
+
+    // 兜底：若完全无法拆分，则退化为单 block（避免空白页）
+    if (blocks.isEmpty) {
+      final wrapper = dom.Element.tag('div')..innerHtml = html;
+      addBlock(wrapper, '//*');
+    }
+
+    return _ReaderBlocksBuildResult(
+      blocks: blocks,
+      indexByCleanXPath: indexByCleanXPath,
+      prefixWeights: prefixWeights,
+      totalWeight: totalWeight <= 0 ? 1.0 : totalWeight,
+    );
+  }
+
+  _ReaderLayoutInfo _analyzeLayoutFromBlocks(List<_ReaderBlock> blocks) {
+    if (blocks.isEmpty) {
+      return const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
+    }
+
+    final totalImages = blocks.fold<int>(
+      0,
+      (sum, b) => sum + b.imageCount,
+    );
+    final totalText = blocks.fold<int>(
+      0,
+      (sum, b) => sum + b.textLength,
+    );
+
+    // 居中：仅一张图且无文本
+    if (totalImages == 1 && totalText == 0 && blocks.length == 1) {
+      return const _ReaderLayoutInfo(_ReaderLayoutMode.center);
+    }
+
+    bool isImageOnly(_ReaderBlock b) => b.imageCount > 0 && b.textLength == 0;
+
+    final startsWithImage = isImageOnly(blocks.first);
+    final endsWithImage = isImageOnly(blocks.last);
+
+    int leadingImageBlocks = 0;
+    for (final b in blocks) {
+      if (isImageOnly(b)) {
+        leadingImageBlocks++;
+      } else {
+        break;
+      }
+    }
+
+    if (leadingImageBlocks >= 2 && totalImages > 2) {
+      return _ReaderLayoutInfo(
+        _ReaderLayoutMode.immersive,
+        startsWithImage: true,
+        endsWithImage: endsWithImage,
+      );
+    }
+
+    return _ReaderLayoutInfo(
+      _ReaderLayoutMode.standard,
+      startsWithImage: startsWithImage,
+      endsWithImage: endsWithImage,
+    );
+  }
+
+  int _lowerBoundPrefixWeight(List<double> prefixWeights, double target) {
+    if (prefixWeights.isEmpty) return 0;
+    int lo = 0;
+    int hi = prefixWeights.length - 1;
+    while (lo < hi) {
+      final mid = lo + ((hi - lo) >> 1);
+      if (prefixWeights[mid] >= target) {
+        hi = mid;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return lo;
+  }
+
+  int _resolveBlockIndexForProgress(double progress01) {
+    final result = _blocksResult;
+    if (result == null || result.blocks.isEmpty) return 0;
+    final p = progress01.clamp(0.0, 1.0);
+    final target = p * result.totalWeight;
+    if (target <= 0) return 0;
+    if (target >= result.totalWeight) return result.blocks.length - 1;
+    return _lowerBoundPrefixWeight(result.prefixWeights, target);
+  }
+
+  int _resolveBlockIndexForXPath(String rawXPath) {
+    final result = _blocksResult;
+    if (result == null || result.blocks.isEmpty) return 0;
+
+    var clean = XPathUtils.cleanXPath(rawXPath);
+    if (clean.isEmpty) return 0;
+
+    while (true) {
+      final idx = result.indexByCleanXPath[clean];
+      if (idx != null) return idx;
+
+      final slash = clean.lastIndexOf('/');
+      if (slash <= 0) break;
+      clean = clean.substring(0, slash);
+    }
+
+    return 0;
+  }
+
+  Future<void> _waitForListAttachment() async {
+    const maxFrames = 60;
+    int frames = 0;
+    while (mounted && !_itemScrollController.isAttached && frames < maxFrames) {
+      final completer = Completer<void>();
+      WidgetsBinding.instance.addPostFrameCallback((_) => completer.complete());
+      await completer.future;
+      frames++;
+    }
+  }
+
+  Future<void> _jumpToBlockIndex(int index, {double alignment = 0.0}) async {
+    final result = _blocksResult;
+    if (result == null || result.blocks.isEmpty) return;
+
+    final clamped = index.clamp(0, result.blocks.length - 1);
+    await _waitForListAttachment();
+    if (!mounted || !_itemScrollController.isAttached) return;
+
+    _itemScrollController.jumpTo(index: clamped, alignment: alignment);
+  }
+
+  void _onItemPositionsChanged() {
+    final result = _blocksResult;
+    if (result == null || result.blocks.isEmpty) return;
+
+    // 滚动时关闭注释 Popover，避免悬浮层与内容位置脱节
+    _FootnoteAnchor.dismissCurrent();
+
+    final positions = _itemPositionsListener.itemPositions.value;
+    ItemPosition? top;
+    for (final p in positions) {
+      final isVisible = p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1;
+      if (!isVisible) continue;
+      if (top == null || p.index < top.index) {
+        top = p;
+      }
+    }
+    if (top == null) return;
+
+    final topIndex = top.index.clamp(0, result.blocks.length - 1);
+
+    if (topIndex != _topVisibleBlockIndex) {
+      _topVisibleBlockIndex = topIndex;
+      _lastTopVisibleXPath = result.blocks[topIndex].xPath;
+    }
+
+    // 边界检测：
+    // - atTop：第一项顶端对齐
+    // - atBottom：最后一项的底边进入视口（考虑浮点误差；并不要求“滚动到底部 padding”）
+    final atTop = topIndex == 0 && top.itemLeadingEdge >= 0;
+    final lastIndex = result.blocks.length - 1;
+    final atBottom = positions.any(
+      (p) => p.index == lastIndex && p.itemTrailingEdge <= 1.0001,
+    );
+
+    // 进度：prefixWeight + block 内部比例（基于 leadingEdge）
+    final total = result.totalWeight;
+    final before = topIndex > 0 ? result.prefixWeights[topIndex - 1] : 0.0;
+    final blockWeight = result.blocks[topIndex].weight;
+
+    final extent = (top.itemTrailingEdge - top.itemLeadingEdge).abs();
+    final fractionPast =
+        extent > 0 ? (-top.itemLeadingEdge / extent).clamp(0.0, 1.0) : 0.0;
+
+    double progress =
+        total > 0 ? ((before + (fractionPast * blockWeight)) / total) : 0.0;
+
+    // UX：用户到达章节末尾时应显示 100%，避免“永远 99%”。
+    if (atTop) {
+      progress = 0.0;
+    } else if (atBottom) {
+      progress = 1.0;
+    }
+
+    _readProgressNotifier.value = progress.clamp(0.0, 1.0);
+
+    // 边界自动显示菜单栏（仅从隐藏→显示）
+    if ((atTop || atBottom) && !_barsVisible) {
+      _toggleBars();
+    }
+
+    // 防抖保存（闲置 2 秒）
+    _savePositionTimer?.cancel();
+    _savePositionTimer = Timer(const Duration(seconds: 2), () {
+      _saveCurrentPosition();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -246,7 +660,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       value: 1.0,
     );
 
-    _scrollController.addListener(_onScroll);
+    _itemPositionsListener.itemPositions.addListener(_onItemPositionsChanged);
     _targetSortNum = widget.sortNum; // 初始化目标章节号
     // 首次进入阅读器：允许用服务端进度进行一次“极速对齐”（避免详情页缓存/多端阅读导致初始章节不准）
     // 之后的手动切章必须绝对尊重用户意图，因此后续调用默认禁用该对齐逻辑。
@@ -278,12 +692,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
     // 监听电量状态变化
     _batteryStateSubscription = _battery.onBatteryStateChanged.listen((state) {
-      if (mounted) {
-        setState(() {
-          _batteryState = state;
-        });
-        _updateBattery();
-      }
+      if (!mounted) return;
+      _batteryStateNotifier.value = state;
+      _updateBattery();
     });
 
     // 每30秒同步更新时间与电量
@@ -300,21 +711,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final period = hour < 12 ? '上午' : '下午';
     final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
 
-    if (mounted) {
-      setState(() {
-        _timeString = '$period $displayHour:$minute';
-      });
-    }
+    if (!mounted) return;
+    _timeStringNotifier.value = '$period $displayHour:$minute';
   }
 
   Future<void> _updateBattery() async {
     try {
       final level = await _battery.batteryLevel;
-      if (mounted) {
-        setState(() {
-          _batteryLevel = level;
-        });
-      }
+      if (!mounted) return;
+      _batteryLevelNotifier.value = level;
     } catch (e) {
       _logger.warning('Failed to get battery level: $e');
     }
@@ -384,9 +789,12 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       );
     }
     WidgetsBinding.instance.removeObserver(this);
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
+    _itemPositionsListener.itemPositions.removeListener(_onItemPositionsChanged);
+    _readProgressNotifier.dispose();
     _infoTimer?.cancel();
+    _batteryLevelNotifier.dispose();
+    _batteryStateNotifier.dispose();
+    _timeStringNotifier.dispose();
     // 退出阅读页时恢复系统栏显示
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -406,32 +814,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     }
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-
-    // 滚动时关闭注释 Popover，避免悬浮层与内容位置脱节
-    _FootnoteAnchor.dismissCurrent();
-
-    final offset = _scrollController.offset;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-
-    // 缓存当前位置用于销毁，clamp 确保不超过 0-100%
-    if (maxScroll > 0) {
-      _lastScrollPercent = (offset / maxScroll).clamp(0.0, 1.0);
-    }
-
-    // 边界自动显示菜单栏
-    if ((offset <= 0 || offset >= maxScroll) && !_barsVisible) {
-      _toggleBars(); // 使用统一的切换方法
-    }
-
-    // 防抖保存（闲置 2 秒）
-    _savePositionTimer?.cancel();
-    _savePositionTimer = Timer(const Duration(seconds: 2), () {
-      _saveCurrentPosition();
-    });
-  }
-
   void _toggleBars() {
     setState(() {
       _barsVisible = !_barsVisible;
@@ -445,7 +827,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
   /// 保存滚动进度（本地+服务端）
   Future<void> _saveCurrentPosition() async {
-    if (_chapter == null || !_scrollController.hasClients) return;
+    if (_chapter == null || _blocksResult == null) return;
 
     final currentXPath = _getTopVisibleXPath();
 
@@ -475,24 +857,31 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     if (_initialScrollDone) return;
     _initialScrollDone = true;
 
+    final result = _blocksResult;
+    if (result == null || result.blocks.isEmpty) return;
+
     final position = await _progressService.getLocalPosition(widget.bid);
 
     _logger.info(
       'Restoring position check: saved=${position?.sortNum}, current=${_chapter?.sortNum}, '
-      'xPath=${position?.xPath}, hasClients=${_scrollController.hasClients}',
+      'xPath=${position?.xPath}, blocks=${result.blocks.length}',
     );
 
     if (position != null &&
-        position.sortNum == _chapter?.sortNum &&
-        _scrollController.hasClients) {
+        position.sortNum == _chapter?.sortNum) {
       if (position.xPath.startsWith('scroll:')) {
-        double targetPos =
+        final targetPos =
             double.tryParse(position.xPath.replaceAll('scroll:', '')) ?? 0.0;
-        await _waitForLayoutAndJump(targetPos);
+        final index = _resolveBlockIndexForProgress(targetPos);
+
+        _topVisibleBlockIndex = index;
+        _lastTopVisibleXPath = result.blocks[index].xPath;
+        await _jumpToBlockIndex(index);
       } else {
-        // 先假设这就是最终状态以防还没渲染就退出
-        _lastTopVisibleXPath = position.xPath;
-        await _waitForLayoutAndXPathJump(position.xPath);
+        final index = _resolveBlockIndexForXPath(position.xPath);
+        _topVisibleBlockIndex = index;
+        _lastTopVisibleXPath = result.blocks[index].xPath;
+        await _jumpToBlockIndex(index);
       }
     } else if (position != null) {
       _logger.info(
@@ -500,124 +889,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         'Saved chapter=${position.sortNum}, Current chapter=${_chapter?.sortNum}',
       );
     }
-  }
-
-  /// 按 XPath 查询并滚动到指定可见节点
-  Future<void> _waitForLayoutAndXPathJump(String targetXPath) async {
-    const maxFrames = 60; // 最多尝试的帧数
-    int frameCount = 0;
-
-    final completer = Completer<void>();
-    // 清洗收到的目标 XPath 防止前缀多端差异无法命中 Key
-    final cleanTargetXPath = XPathUtils.cleanXPath(targetXPath);
-
-    void checkLayout(Duration _) {
-      if (!mounted || !_scrollController.hasClients) {
-        completer.complete();
-        return;
-      }
-
-      // 寻找对应的 xpath key 环境
-      final key = Key('xpath_$cleanTargetXPath');
-      final element = _findChildElementByKey(context as Element, key);
-
-      if (element != null) {
-        final box = element.findRenderObject() as RenderBox?;
-        if (box != null && box.hasSize) {
-          Scrollable.ensureVisible(element, duration: Duration.zero).then((_) {
-            _logger.info('XPath Target reached on matched node.');
-            if (!completer.isCompleted) completer.complete();
-          });
-          return;
-        }
-      }
-
-      final maxScroll = _scrollController.position.maxScrollExtent;
-
-      if (maxScroll <= 0 || frameCount >= maxFrames) {
-        completer.complete();
-        return;
-      }
-
-      frameCount++;
-      WidgetsBinding.instance.addPostFrameCallback(checkLayout);
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback(checkLayout);
-    return completer.future;
-  }
-
-  /// 在整个构建树下级递归寻找匹配的 RenderObjectElement
-  Element? _findChildElementByKey(Element parent, Key key) {
-    Element? found;
-    parent.visitChildren((child) {
-      if (found != null) return;
-      if (child.widget.key == key) {
-        found = child;
-        return;
-      }
-      found = _findChildElementByKey(child, key);
-    });
-    return found;
-  }
-
-  /// 等待布局完成后跳转到指定比例（降级老旧百分比）
-  /// 采用“迭代逼近跳转算法”解决 SliverList 动态高度估计带来的百分比漂移
-  Future<void> _waitForLayoutAndJump(double targetPercent) async {
-    const maxFrames = 60; // 最多尝试的帧数
-    int frameCount = 0;
-    const double tolerance = 0.005; // 允许的误差范围 (0.5%)
-
-    final completer = Completer<void>();
-
-    void checkLayout(Duration _) {
-      if (!mounted || !_scrollController.hasClients) {
-        completer.complete();
-        return;
-      }
-
-      final maxScroll = _scrollController.position.maxScrollExtent;
-      final currentScroll = _scrollController.offset;
-      final currentPercent = maxScroll > 0 ? currentScroll / maxScroll : 0.0;
-
-      // 如果内容过短无需滚动，或者迭代次数用尽
-      if (maxScroll <= 0 || frameCount >= maxFrames) {
-        completer.complete();
-        return;
-      }
-
-      // 评估误差：计算目前所在百分比与目标百分比的差值
-      final error = (currentPercent - targetPercent).abs();
-
-      // 如果误差小于容忍度，或这已经是尝试的最后一帧，完成定位
-      if (error <= tolerance) {
-        _logger.info(
-          'Target reached iteratively. frame: $frameCount, '
-          'error: ${(error * 100).toStringAsFixed(2)}%, '
-          'maxScroll: $maxScroll',
-        );
-        completer.complete();
-        return;
-      }
-
-      // 未达到容忍度，基于当前的估算 maxScroll 继续逼近跳转
-      final targetScroll = targetPercent * maxScroll;
-      _logger.info(
-        'Approximating jump: targetScroll=$targetScroll, current_percent=${(currentPercent * 100).toStringAsFixed(1)}%, '
-        'target=${(targetPercent * 100).toStringAsFixed(1)}% (frame $frameCount)',
-      );
-
-      _scrollController.jumpTo(targetScroll);
-
-      // 触发下一次帧回调继续验证（由于上一行刚改变了 offset，渲染管线会在下一帧暴露新的 maxScrollExtent）
-      frameCount++;
-      WidgetsBinding.instance.addPostFrameCallback(checkLayout);
-    }
-
-    // 启动迭代循环
-    WidgetsBinding.instance.addPostFrameCallback(checkLayout);
-
-    return completer.future;
   }
 
   Future<void> _loadChapter(
@@ -641,8 +912,13 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       _initialScrollDone = false;
 
       // 重置渲染内容与脚注缓存，避免短暂显示上一章的注释映射
-      _renderedChapterHtml = null;
       _footnoteNotesById = const {};
+
+      _blocksResult = null;
+      _layoutInfo = const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
+      _topVisibleBlockIndex = 0;
+      _lastTopVisibleXPath = '//*';
+      _readProgressNotifier.value = 0.0;
     });
 
     try {
@@ -761,21 +1037,26 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
       if (mounted && currentVersion == _loadVersion) {
         // 3. 预处理脚注/注释（对标 Web：隐藏原注释节点 + 记录内容 + 禁用默认跳转）
         final processed = _processFootnotes(chapter.content);
-        // 赋予 DOM 节点 xPath 以便挂载拦截器观测可视坐标
-        final injectedHtml = XPathUtils.injectXPathAttributes(processed.html);
+        // 4. 构建可虚拟化 blocks（Route B：用于性能优化与逻辑进度）
+        final blocksResult = _buildBlocksFromHtml(processed.html);
+        final layoutInfo = _analyzeLayoutFromBlocks(blocksResult.blocks);
 
         setState(() {
           _chapter = chapter;
           // 确保目标章节号与实际加载章节一致（使用请求的 sortNum，而非返回的）
           _targetSortNum = sortNum;
           _fontFamily = family; // 字体加载逻辑
-          _renderedChapterHtml = injectedHtml;
           _footnoteNotesById = processed.notesById;
+          _blocksResult = blocksResult;
+          _layoutInfo = layoutInfo;
           _loading = false;
-          _lastScrollPercent = 0.0;
-          _visibleElements.clear();
           _shownImages.clear(); // 新层清空曾经看过的图
-          _lastTopVisibleXPath = '//*';
+          _topVisibleBlockIndex = 0;
+          _lastTopVisibleXPath =
+              blocksResult.blocks.isNotEmpty
+                  ? blocksResult.blocks.first.xPath
+                  : '//*';
+          _readProgressNotifier.value = 0.0;
         });
 
         // 构建后恢复进度
@@ -788,33 +1069,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
           // 无论是否恢复进度，都保存当前章节到服务端
           // 确保点击章节进入后即使不滑动也能同步
           if (mounted && _chapter != null && currentVersion == _loadVersion) {
-            if (_scrollController.hasClients &&
-                _scrollController.position.maxScrollExtent > 0) {
-              // 布局完成，保存当前位置（包含章节信息）
-              await _saveCurrentPosition();
-              _logger.info(
-                'Chapter loaded, saved position to sync with server',
-              );
-            } else {
-              // 布局未完成但章节已加载：不要写入/上传虚假的 scroll:0.0000，避免污染服务端精确 XPath。
-              // 使用当前已知的 topVisibleXPath（restore 可能已提前设置），至少保证章节信息正确。
-              final xPath = _getTopVisibleXPath();
-
-              await _progressService.saveLocalPosition(
-                bookId: widget.bid,
-                chapterId: _chapter!.id,
-                sortNum: _chapter!.sortNum,
-                xPath: xPath,
-              );
-              await _progressService.saveReadPosition(
-                bookId: widget.bid,
-                chapterId: _chapter!.id,
-                xPath: xPath,
-              );
-              _logger.info(
-                'Chapter loaded (no scroll), saved ch${_chapter!.sortNum} to sync',
-              );
-            }
+            await _saveCurrentPosition();
+            _logger.info('Chapter loaded, saved position to sync with server');
           }
         });
       }
@@ -880,38 +1136,42 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
         builder: (context) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
 
-          return AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle(
-              statusBarColor:
-                  Colors.transparent, // 顶部状态栏透明（由 SoftEdgeBlur 接管视觉）
-              statusBarIconBrightness:
-                  isDark ? Brightness.light : Brightness.dark,
-              // 底部导航条透明沉浸
-              systemNavigationBarColor: Colors.transparent,
-              systemNavigationBarDividerColor: Colors.transparent,
-              systemNavigationBarIconBrightness:
-                  isDark ? Brightness.light : Brightness.dark,
-            ),
-            child: Scaffold(
-              body: Stack(
-                children: [
-                  // 主要内容层
-                  Positioned.fill(
-                    child: GestureDetector(
-                      onTap: _toggleBars,
-                      child:
-                          _loading
-                              ? const Center(child: M3ELoadingIndicator())
-                              : _error != null
-                              ? _buildErrorView()
-                              : _buildWebContent(context, settings),
+           // ignore: deprecated_member_use
+           return WillPopScope(
+             onWillPop: _onWillPop,
+             child: AnnotatedRegion<SystemUiOverlayStyle>(
+value: SystemUiOverlayStyle(
+                statusBarColor:
+                    Colors.transparent, // 顶部状态栏透明（由 SoftEdgeBlur 接管视觉）
+                statusBarIconBrightness:
+                    isDark ? Brightness.light : Brightness.dark,
+                // 底部导航条透明沉浸
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarDividerColor: Colors.transparent,
+                systemNavigationBarIconBrightness:
+                    isDark ? Brightness.light : Brightness.dark,
+              ),
+              child: Scaffold(
+                body: Stack(
+                  children: [
+                    // 主要内容层
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: _toggleBars,
+                        child:
+                            _loading
+                                ? const Center(child: M3ELoadingIndicator())
+                                : _error != null
+                                ? _buildErrorView()
+                                : _buildWebContent(context, settings),
+                      ),
                     ),
-                  ),
 
-                  // 悬浮功能区
-                  _buildFloatingTopBar(context),
-                  _buildFloatingBottomControls(context),
-                ],
+                    // 悬浮功能区
+                    _buildFloatingTopBar(context),
+                    _buildFloatingBottomControls(context),
+                  ],
+                ),
               ),
             ),
           );
@@ -920,107 +1180,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     );
   }
 
-  _ReaderLayoutInfo _analyzeLayout(String content) {
-    if (content.isEmpty) {
-      return const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
-    }
-    try {
-      final doc = html_parser.parseFragment(content);
-
-      // 获取有效子节点（忽略空白文本）
-      final children =
-          doc.nodes.where((n) {
-            if (n is dom.Text) return n.text.trim().isNotEmpty;
-            if (n is dom.Element) return true;
-            return false;
-          }).toList();
-
-      final imgCount = doc.querySelectorAll('img').length;
-      final textContent = doc.text?.trim() ?? '';
-
-      // 定义判断是否以图片开头的辅助逻辑 (处理嵌套)
-      bool isImageAtTop(dom.Node? node) {
-        if (node == null) return false;
-        if (node is dom.Element) {
-          if (node.localName == 'img') return true;
-          // 检查第一个有意义的子节点
-          for (var child in node.nodes) {
-            if (child is dom.Text && child.text.trim().isEmpty) continue;
-            if (child is dom.Element) return isImageAtTop(child);
-            break;
-          }
-        }
-        return false;
-      }
-
-      // 如果全篇只有一张图且无文本，满足居中条件
-      if (imgCount == 1 && textContent.isEmpty) {
-        return const _ReaderLayoutInfo(_ReaderLayoutMode.center);
-      }
-
-      bool startsWithImage = false;
-      if (children.isNotEmpty) {
-        // 尝试从前三个节点中找图，如果在这之前没有显著文本信息，就算 startsWithImage
-        for (int i = 0; i < children.length && i < 3; i++) {
-          final node = children[i];
-          if (isImageAtTop(node)) {
-            startsWithImage = true;
-            break;
-          }
-          // 如果遇到了显著的文本（即便是 H1, P 等包裹），则认为不是以图片开头
-          if (node.text?.trim().isNotEmpty == true) break;
-        }
-      }
-
-      bool endsWithImage = false;
-      if (children.isNotEmpty) {
-        final lastNode = children.last;
-        if (lastNode is dom.Element) {
-          if (lastNode.localName == 'img') {
-            endsWithImage = true;
-          } else if (lastNode.querySelectorAll('img').isNotEmpty) {
-            // 如果最后一个元素包含图片且没有后续文字，也算 endsWithImage
-            final lastMeaningful = lastNode.nodes.lastWhere(
-              (n) => !(n is dom.Text && n.text.trim().isEmpty),
-              orElse: () => lastNode,
-            );
-            if (lastMeaningful is dom.Element &&
-                lastMeaningful.localName == 'img') {
-              endsWithImage = true;
-            }
-          }
-        }
-      }
-
-      // 检查沉浸式置顶模式
-      if (children.isNotEmpty) {
-        int consecutiveImages = 0;
-        for (final node in children) {
-          if (isImageAtTop(node)) {
-            consecutiveImages++;
-          } else {
-            break;
-          }
-        }
-
-        if (consecutiveImages >= 2 && imgCount > 2) {
-          return _ReaderLayoutInfo(
-            _ReaderLayoutMode.immersive,
-            startsWithImage: true,
-            endsWithImage: endsWithImage,
-          );
-        }
-      }
-
-      return _ReaderLayoutInfo(
-        _ReaderLayoutMode.standard,
-        startsWithImage: startsWithImage,
-        endsWithImage: endsWithImage,
-      );
-    } catch (e) {
-      return const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
-    }
-  }
+  // _analyzeLayout 已由基于 blocks 的 _analyzeLayoutFromBlocks 替代（见上方）。
 
   Widget _buildWebContent(BuildContext context, AppSettings settings) {
     final double topPadding = MediaQuery.of(context).padding.top;
@@ -1030,13 +1190,8 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     final readerBackgroundColor = _getReaderBackgroundColor(settings);
     final readerTextColor = _getReaderTextColor(settings);
 
-    final chapterHtml = _renderedChapterHtml ?? _chapter?.content ?? '';
-
-    // 分析布局模式
-    final layoutInfo =
-        chapterHtml.isNotEmpty
-            ? _analyzeLayout(chapterHtml)
-            : const _ReaderLayoutInfo(_ReaderLayoutMode.standard);
+    // Route B：布局信息在加载章节时基于 blocks 预计算并缓存，避免 build 时反复 parse。
+    final layoutInfo = _layoutInfo;
 
     // 基础 padding 计算
     final EdgeInsets padding =
@@ -1301,19 +1456,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
             builder: (context, setState) {
               final isShown = _shownImages.contains(src);
 
-              // 当未显示时，仅返回一个等大小的骨架侦测器，以拦截真正的下载
-              if (!isShown) {
-                return VisibilityDetector(
-                  key: Key('lazy_img_$src'),
-                  onVisibilityChanged: (info) {
-                    if (info.visibleFraction > 0) {
-                      _shownImages.add(src);
-                      setState(() {});
-                    }
-                  },
-                  child: buildPlaceholder(isError: false),
-                );
-              }
+               // Route B：正文已虚拟化（仅构建视口附近 blocks），此处不再需要额外的 VisibilityDetector。
+               // 直接展示图片（CachedNetworkImage 自带异步加载与占位），同时保留比例占位以稳定布局。
+               if (!isShown) {
+                 _shownImages.add(src);
+               }
 
               // 显示之后，返回原本的网络图片容器
               return CachedNetworkImage(
@@ -1364,22 +1511,31 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
 
     content = LayoutBuilder(
       builder: (context, constraints) {
-        return SingleChildScrollView(
-          controller: _scrollController,
+        final result = _blocksResult;
+        final blocks = result?.blocks ?? const <_ReaderBlock>[];
+
+        if (blocks.isEmpty) {
+          return const Center(child: M3ELoadingIndicator());
+        }
+
+        return ScrollablePositionedList.builder(
+          itemScrollController: _itemScrollController,
+          itemPositionsListener: _itemPositionsListener,
+          itemCount: blocks.length,
           padding:
               layoutInfo.mode == _ReaderLayoutMode.center
                   ? EdgeInsets.zero
                   : padding,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Align(
+          itemBuilder: (context, index) {
+            final block = blocks[index];
+
+            return Align(
               alignment:
                   layoutInfo.mode == _ReaderLayoutMode.center
                       ? Alignment.center
                       : Alignment.topCenter,
               child: HtmlWidget(
-                chapterHtml,
-                factoryBuilder: () => _XPathWidgetFactory(_onVisibilityChanged),
+                block.html,
                 textStyle: TextStyle(
                   fontFamily: _fontFamily,
                   fontSize: settings.fontSize,
@@ -1388,10 +1544,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                 ),
                 customStylesBuilder: customStylesBuilder,
                 customWidgetBuilder: customWidgetBuilder,
-                // Omit renderMode to default to RenderMode.column (Which resolves the bug!)
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -1399,13 +1554,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
     // 包裹背景色容器
     return Container(
       color: readerBackgroundColor, // 应用阅读背景色
-      child: NotificationListener<ScrollEndNotification>(
-        onNotification: (notification) {
-          if (mounted) setState(() {});
-          return false;
-        },
-        child: content,
-      ),
+      child: content,
     );
   }
 
@@ -1649,7 +1798,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                   width: 44,
                   height: 44,
                   child: AdaptiveButton.sfSymbol(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      _exitReaderPage();
+                    },
                     sfSymbol: const SFSymbol('chevron.left', size: 20),
                     style: AdaptiveButtonStyle.glass,
                     borderRadius: BorderRadius.circular(1000),
@@ -1668,7 +1819,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                         Theme.of(context).colorScheme;
                     return AdaptiveFloatingActionButton(
                       mini: true,
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        _exitReaderPage();
+                      },
                       backgroundColor: colorScheme.primaryContainer,
                       foregroundColor: colorScheme.onPrimaryContainer,
                       child: Icon(
@@ -1767,86 +1920,125 @@ class _ReaderPageState extends ConsumerState<ReaderPage>
                                 children: [
                                   SizedBox(
                                     width: 70, // 加宽以容纳长文本
-                                    child: Text(
-                                      _timeString,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.copyWith(
-                                        color: subTextColor,
-                                        fontSize: 11,
-                                        // height: 1,
-                                      ),
-                                      textAlign: TextAlign.right, // 靠右对齐，紧贴电量条
+                                    child: ValueListenableBuilder<String>(
+                                      valueListenable: _timeStringNotifier,
+                                      builder: (context, timeString, _) {
+                                        return Text(
+                                          timeString,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall?.copyWith(
+                                            color: subTextColor,
+                                            fontSize: 11,
+                                            // height: 1,
+                                          ),
+                                          textAlign:
+                                              TextAlign.right, // 靠右对齐，紧贴电量条
+                                        );
+                                      },
                                     ),
                                   ),
                                   const SizedBox(width: 8),
 
                                   // IOS: 自定义电池条
                                   if (Platform.isIOS) ...[
-                                    Container(
-                                      width: 36,
-                                      height: 6,
-                                      decoration: BoxDecoration(
-                                        color: subTextColor.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                      alignment: Alignment.centerLeft,
-                                      child: FractionallySizedBox(
-                                        widthFactor: _batteryLevel / 100.0,
-                                        heightFactor: 1.0,
-                                        child: Container(
+                                    AnimatedBuilder(
+                                      animation: Listenable.merge([
+                                        _batteryLevelNotifier,
+                                        _batteryStateNotifier,
+                                      ]),
+                                      builder: (context, _) {
+                                        final batteryLevel =
+                                            _batteryLevelNotifier.value;
+                                        final batteryState =
+                                            _batteryStateNotifier.value;
+
+                                        final widthFactor =
+                                            (batteryLevel / 100.0)
+                                                .clamp(0.0, 1.0);
+
+                                        final barColor = () {
+                                          if (batteryState ==
+                                              BatteryState.charging) {
+                                            // K: 充电则显示蓝色条
+                                            return Colors.blue;
+                                          }
+                                          // 正常状态
+                                          if (batteryLevel <= 15) {
+                                            return Colors.red; // 15% 以下红
+                                          } else if (batteryLevel <= 35) {
+                                            return Colors.yellow; // 35% 以下黄
+                                          }
+                                          // 默认绿
+                                          return const Color(0xFF34C759);
+                                        }();
+
+                                        return Container(
+                                          width: 36,
+                                          height: 6,
                                           decoration: BoxDecoration(
-                                            color: () {
-                                              if (_batteryState ==
-                                                  BatteryState.charging) {
-                                                // K: 充电则显示蓝色条
-                                                return Colors.blue;
-                                              }
-                                              // 正常状态
-                                              if (_batteryLevel <= 15) {
-                                                return Colors.red; // 15% 以下红
-                                              } else if (_batteryLevel <= 35) {
-                                                return Colors.yellow; // 35% 以下黄
-                                              } else {
-                                                // 默认绿
-                                                return const Color(0xFF34C759);
-                                              }
-                                            }(),
-                                            borderRadius: BorderRadius.circular(
-                                              3,
+                                            color: subTextColor.withValues(
+                                              alpha: 0.2,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(3),
+                                          ),
+                                          alignment: Alignment.centerLeft,
+                                          child: FractionallySizedBox(
+                                            widthFactor: widthFactor,
+                                            heightFactor: 1.0,
+                                            child: Container(
+                                              decoration: BoxDecoration(
+                                                color: barColor,
+                                                borderRadius:
+                                                    BorderRadius.circular(3),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ),
+                                        );
+                                      },
                                     ),
                                   ] else
                                     // 其他平台：百分比文字
-                                    Text(
-                                      '电量 $_batteryLevel%',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.copyWith(
-                                        color: subTextColor,
-                                        fontSize: 11,
-                                        height: 1,
-                                      ),
+                                    ValueListenableBuilder<int>(
+                                      valueListenable: _batteryLevelNotifier,
+                                      builder: (context, batteryLevel, _) {
+                                        return Text(
+                                          '电量 $batteryLevel%',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall?.copyWith(
+                                            color: subTextColor,
+                                            fontSize: 11,
+                                            height: 1,
+                                          ),
+                                        );
+                                      },
                                     ),
 
                                   const SizedBox(width: 8),
                                   SizedBox(
                                     width: 70, // 保持对称
-                                    child: Text(
-                                      '已读 ${(_lastScrollPercent.clamp(0.0, 1.0) * 100).toInt()}%',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.copyWith(
-                                        color: subTextColor,
-                                        fontSize: 11,
-                                        // height: 1,
-                                      ),
-                                      textAlign: TextAlign.left, // 靠左对齐，紧贴电量条
+                                    child: ValueListenableBuilder<double>(
+                                      valueListenable: _readProgressNotifier,
+                                      builder: (context, value, _) {
+                                        final percent =
+                                            (value.clamp(0.0, 1.0) * 100)
+                                                .round()
+                                                .clamp(0, 100)
+                                                .toInt();
+                                        return Text(
+                                          '已读 $percent%',
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall?.copyWith(
+                                            color: subTextColor,
+                                            fontSize: 11,
+                                            // height: 1,
+                                          ),
+                                          textAlign: TextAlign.left,
+                                        );
+                                      },
                                     ),
                                   ),
                                 ],

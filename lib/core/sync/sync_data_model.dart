@@ -125,7 +125,7 @@ class SyncModule {
   }
 
   /// 合并模块数据（细粒度策略）
-  /// - bookmarks/readingProgress：按条目的 updatedAt 合并
+  /// - bookmarks：按条目的 updatedAt 合并
   /// - readingTime：取每日最大值
   /// - 其他：整体取最新
   SyncModule mergeWith(SyncModule remote, {String? moduleName}) {

@@ -72,6 +72,7 @@ dependencies:
   flutter_blurhash: 
     path: packages/flutter_blurhash
   visibility_detector: ^0.4.0+2
+  scrollable_positioned_list: ^0.3.8
 
 dev_dependencies:
   flutter_test:

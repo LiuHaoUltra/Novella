@@ -91,8 +91,9 @@ class ReadingProgressService {
   }
 
   /// 获取阅读位置（仅本地）
-  /// 注：服务端无 GetReadPosition 接口。
-  /// 服务端位置包含在 GetBookInfo 响应中。
+  ///
+  /// 说明：服务端阅读位置通常随 GetBookInfo 返回（BookInfo.ReadPosition）。
+  /// Web 端存在 GetReadPosition 调用，但 App 当前不依赖该接口。
   /// 此方法仅返回本地缓存。
   Future<Map<String, dynamic>?> getReadPosition(int bookId) async {
     // 仅返回本地缓存

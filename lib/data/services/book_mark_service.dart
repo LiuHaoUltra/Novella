@@ -43,7 +43,8 @@ extension BookMarkStatusExtension on BookMarkStatus {
 
 /// 本地书签管理服务
 /// 使用 SharedPreferences 存储阅读状态
-/// 纯本地功能，不影响服务端数据
+/// 不同步至主站服务端；若启用 GitHub Gist 同步，则会通过 [`SyncManager`](lib/core/sync/sync_manager.dart:25)
+/// 在设备间同步（见 [`SyncManager._collectLocalData()`](lib/core/sync/sync_manager.dart:533)）。
 class BookMarkService {
   static final Logger _logger = Logger('BookMarkService');
   static final BookMarkService _instance = BookMarkService._internal();

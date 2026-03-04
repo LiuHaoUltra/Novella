@@ -1,9 +1,11 @@
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 本地阅读时长追踪服务
-/// 存储每日阅读分钟数
-/// 不云同步 - 纯本地统计
+/// 阅读时长追踪服务
+///
+/// - 本地：存储每日阅读分钟数（SharedPreferences: `reading_time_YYYY-MM-DD`）
+/// - 云端：若启用 GitHub Gist 同步，则会被 [`SyncManager`](lib/core/sync/sync_manager.dart:25)
+///   在收集本地数据阶段纳入同步（见 [`SyncManager._collectLocalData()`](lib/core/sync/sync_manager.dart:533)）。
 class ReadingTimeService {
   static final Logger _logger = Logger('ReadingTimeService');
   static final ReadingTimeService _instance = ReadingTimeService._internal();
